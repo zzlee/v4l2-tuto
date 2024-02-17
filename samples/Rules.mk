@@ -9,20 +9,9 @@ else
 AT = @
 endif
 
-# Location of the target rootfs
-ifeq ($(shell uname -m), aarch64)
-TARGET_ROOTFS :=
-else
-ifeq ($(TARGET_ROOTFS),)
-$(error Please specify the target rootfs path if you are cross-compiling)
-endif
-endif
+# TARGET_ROOTFS ?= /usr/targets/aarch64-unknown/
+# CROSS_COMPILE ?= aarch64-unknown-linux-gnu-
 
-ifeq ($(shell uname -m), aarch64)
-CROSS_COMPILE :=
-else
-CROSS_COMPILE ?= aarch64-unknown-linux-gnu-
-endif
 AS             = $(AT) $(CROSS_COMPILE)as
 LD             = $(AT) $(CROSS_COMPILE)ld
 CC             = $(AT) $(CROSS_COMPILE)gcc
@@ -36,11 +25,18 @@ OBJDUMP        = $(AT) $(CROSS_COMPILE)objdump
 # Specify the logical root directory for headers and libraries.
 ifneq ($(TARGET_ROOTFS),)
 CPPFLAGS += --sysroot=$(TARGET_ROOTFS)
+CFLAGS += --sysroot=$(TARGET_ROOTFS)
 LDFLAGS +=
 endif
 
 # All common header files
-CPPFLAGS += -std=c++11
+CPPFLAGS += -std=c++11 \
+-I../common
+CFLAGS += \
+-I../common
 
 # All common dependent libraries
-LDFLAGS +=
+LDFLAGS += \
+	-pthread
+
+COMMON_DIR := ../common

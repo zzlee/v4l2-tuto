@@ -1,8 +1,8 @@
 SUBDIRS = \
 	modules/qvcam
 
-# SUBDIRS += \
-# 	samples/01_v4l-ctl
+SUBDIRS += \
+	samples/01_v4l-ctl
 
 .PHONY: all
 all:
