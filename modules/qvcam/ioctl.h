@@ -16,19 +16,9 @@
  * 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
  */
 
-#include "log.h"
+#ifndef AKVCAM_IOCTL_H
+#define AKVCAM_IOCTL_H
 
-static struct akvcam_log
-{
-    int level;
-} akvcam_log_private;
+const struct v4l2_ioctl_ops *akvcam_ioctl_ops(void);
 
-int akvcam_log_level(void)
-{
-    return akvcam_log_private.level;
-}
-
-void akvcam_log_set_level(int level)
-{
-    akvcam_log_private.level = level;
-}
+#endif // AKVCAM_IOCTL_H

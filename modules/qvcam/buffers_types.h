@@ -16,19 +16,11 @@
  * 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
  */
 
-#include "log.h"
+#ifndef AKVCAM_BUFFERS_TYPES_H
+#define AKVCAM_BUFFERS_TYPES_H
 
-static struct akvcam_log
-{
-    int level;
-} akvcam_log_private;
+struct akvcam_buffers;
+typedef struct akvcam_buffers *akvcam_buffers_t;
+typedef const struct akvcam_buffers *akvcam_buffers_ct;
 
-int akvcam_log_level(void)
-{
-    return akvcam_log_private.level;
-}
-
-void akvcam_log_set_level(int level)
-{
-    akvcam_log_private.level = level;
-}
+#endif // AKVCAM_BUFFERS_TYPES_H

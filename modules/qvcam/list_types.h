@@ -16,19 +16,23 @@
  * 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
  */
 
-#include "log.h"
+#ifndef AKVCAM_LIST_TYPES_H
+#define AKVCAM_LIST_TYPES_H
 
-static struct akvcam_log
-{
-    int level;
-} akvcam_log_private;
+#define akvcam_list_tt(type) akvcam_list_t
+#define akvcam_list_ctt(type) akvcam_list_ct
 
-int akvcam_log_level(void)
-{
-    return akvcam_log_private.level;
-}
+struct akvcam_list;
+typedef struct akvcam_list *akvcam_list_t;
+typedef const struct akvcam_list *akvcam_list_ct;
+struct akvcam_list_element;
+typedef struct akvcam_list_element *akvcam_list_element_t;
+typedef const struct akvcam_list_element *akvcam_list_element_ct;
+typedef akvcam_list_tt(char *) akvcam_string_list_t;
+typedef akvcam_list_ctt(char *) akvcam_string_list_ct;
+typedef akvcam_list_tt(akvcam_list_t) akvcam_matrix_t;
+typedef akvcam_list_ctt(akvcam_list_t) akvcam_matrix_ct;
+typedef akvcam_list_tt(akvcam_string_list_t) akvcam_string_matrix_t;
+typedef akvcam_list_ctt(akvcam_string_list_t) akvcam_string_matrix_ct;
 
-void akvcam_log_set_level(int level)
-{
-    akvcam_log_private.level = level;
-}
+#endif // AKVCAM_LIST_TYPES_H

@@ -1,5 +1,5 @@
 /* akvcam, virtual camera for Linux.
- * Copyright (C) 2018  Gonzalo Exequiel Pedone
+ * Copyright (C) 2021  Gonzalo Exequiel Pedone
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -16,19 +16,11 @@
  * 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
  */
 
-#include "log.h"
+#ifndef AKVCAM_FRAME_FILTER_TYPES_H
+#define AKVCAM_FRAME_FILTER_TYPES_H
 
-static struct akvcam_log
-{
-    int level;
-} akvcam_log_private;
+struct akvcam_frame_filter;
+typedef struct akvcam_frame_filter *akvcam_frame_filter_t;
+typedef const struct akvcam_frame_filter *akvcam_frame_filter_ct;
 
-int akvcam_log_level(void)
-{
-    return akvcam_log_private.level;
-}
-
-void akvcam_log_set_level(int level)
-{
-    akvcam_log_private.level = level;
-}
+#endif // AKVCAM_FRAME_FILTER_TYPES_H

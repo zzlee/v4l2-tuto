@@ -16,50 +16,50 @@
  * 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
  */
 
-#ifndef QVCAM_LOG_H
-#define QVCAM_LOG_H
+#ifndef AKVCAM_LOG_H
+#define AKVCAM_LOG_H
 
 #include <linux/version.h>
 
-#define qpr_file_name (strrchr(__FILE__, '/') + 1)
-#define qpr_log_format "[qvcam] %s(%d): "
+#define akpr_file_name (strrchr(__FILE__, '/') + 1)
+#define akpr_log_format "[akvcam] %s(%d): "
 
-#define qpr_err(fmt, ...) \
+#define akpr_err(fmt, ...) \
     do { \
-        if (qvcam_log_level() >= LOGLEVEL_ERR) { \
-            printk(KERN_ERR qpr_log_format fmt, \
-                   qpr_file_name, __LINE__, ##__VA_ARGS__); \
+        if (akvcam_log_level() >= LOGLEVEL_ERR) { \
+            printk(KERN_ERR akpr_log_format fmt, \
+                   akpr_file_name, __LINE__, ##__VA_ARGS__); \
         } \
     } while (false)
 
-#define qpr_warning(fmt, ...) \
+#define akpr_warning(fmt, ...) \
     do { \
-        if (qvcam_log_level() >= LOGLEVEL_WARNING) { \
-            printk(KERN_WARNING qpr_log_format fmt, \
-                   qpr_file_name, __LINE__, ##__VA_ARGS__); \
+        if (akvcam_log_level() >= LOGLEVEL_WARNING) { \
+            printk(KERN_WARNING akpr_log_format fmt, \
+                   akpr_file_name, __LINE__, ##__VA_ARGS__); \
         } \
     } while (false)
 
-#define qpr_info(fmt, ...) \
+#define akpr_info(fmt, ...) \
     do { \
-        if (qvcam_log_level() >= LOGLEVEL_INFO) { \
-            printk(KERN_INFO qpr_log_format fmt, \
-                   qpr_file_name, __LINE__, ##__VA_ARGS__); \
+        if (akvcam_log_level() >= LOGLEVEL_INFO) { \
+            printk(KERN_INFO akpr_log_format fmt, \
+                   akpr_file_name, __LINE__, ##__VA_ARGS__); \
         } \
     } while (false)
 
-#define qpr_debug(fmt, ...) \
+#define akpr_debug(fmt, ...) \
     do { \
-        if (qvcam_log_level() >= LOGLEVEL_DEBUG) { \
-            printk(KERN_DEBUG qpr_log_format fmt, \
-                   qpr_file_name, __LINE__, ##__VA_ARGS__); \
+        if (akvcam_log_level() >= LOGLEVEL_DEBUG) { \
+            printk(KERN_DEBUG akpr_log_format fmt, \
+                   akpr_file_name, __LINE__, ##__VA_ARGS__); \
         } \
     } while (false)
 
-#define qpr_function() \
-    qpr_debug("%s()\n", __FUNCTION__)
+#define akpr_function() \
+    akpr_debug("%s()\n", __FUNCTION__)
 
-int qvcam_log_level(void);
-void qvcam_log_set_level(int level);
+int akvcam_log_level(void);
+void akvcam_log_set_level(int level);
 
-#endif // QVCAM_LOG_H
+#endif // AKVCAM_LOG_H

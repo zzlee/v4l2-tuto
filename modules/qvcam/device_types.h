@@ -16,19 +16,29 @@
  * 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
  */
 
-#include "log.h"
+#ifndef AKVCAM_DEVICE_TYPES_H
+#define AKVCAM_DEVICE_TYPES_H
 
-static struct akvcam_log
-{
-    int level;
-} akvcam_log_private;
+#include <linux/types.h>
 
-int akvcam_log_level(void)
-{
-    return akvcam_log_private.level;
-}
+#include "list_types.h"
 
-void akvcam_log_set_level(int level)
+#define AKVCAM_RW_MODE_READWRITE BIT(0)
+#define AKVCAM_RW_MODE_MMAP      BIT(1)
+#define AKVCAM_RW_MODE_USERPTR   BIT(2)
+#define AKVCAM_RW_MODE_DMABUF    BIT(3)
+
+struct akvcam_device;
+typedef struct akvcam_device *akvcam_device_t;
+typedef const struct akvcam_device *akvcam_device_ct;
+typedef akvcam_list_tt(akvcam_device_t) akvcam_devices_list_t;
+typedef akvcam_list_ctt(akvcam_device_t) akvcam_devices_list_ct;
+typedef __u32 AKVCAM_RW_MODE;
+
+typedef enum
 {
-    akvcam_log_private.level = level;
-}
+    AKVCAM_DEVICE_TYPE_CAPTURE,
+    AKVCAM_DEVICE_TYPE_OUTPUT,
+} AKVCAM_DEVICE_TYPE;
+
+#endif // AKVCAM_DEVICE_TYPES_H

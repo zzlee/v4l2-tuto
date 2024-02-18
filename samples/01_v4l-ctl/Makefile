@@ -3,8 +3,8 @@ include ../Rules.mk
 APP := 01_v4l-ctl
 
 SRCS := \
-	$(wildcard $(COMMON_DIR)/*.cpp) \
-	main.cpp
+	main.cpp \
+	$(wildcard $(COMMON_DIR)/*.cpp)
 
 OBJS := $(SRCS:.cpp=.o)
 

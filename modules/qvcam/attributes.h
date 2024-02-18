@@ -16,19 +16,11 @@
  * 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
  */
 
-#include "log.h"
+#ifndef AKVCAM_ATTRIBUTES_H
+#define AKVCAM_ATTRIBUTES_H
 
-static struct akvcam_log
-{
-    int level;
-} akvcam_log_private;
+#include "device_types.h"
 
-int akvcam_log_level(void)
-{
-    return akvcam_log_private.level;
-}
+const struct attribute_group **akvcam_attributes_groups(AKVCAM_DEVICE_TYPE device_type);
 
-void akvcam_log_set_level(int level)
-{
-    akvcam_log_private.level = level;
-}
+#endif // AKVCAM_ATTRIBUTES_H
