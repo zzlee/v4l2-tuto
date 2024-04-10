@@ -18,8 +18,8 @@ $(COMMON_DIR)/%.o: $(COMMON_DIR)/%.cpp
 
 %.o: %.cpp
 	@echo "Compiling: $<"
-	$(CPP) $(CPPFLAGS) -fPIC -c $<
+	$(AT)$(CXX) $(CXXFLAGS) -fPIC -c $<
 
 $(APP): $(OBJS)
 	@echo "Linking: $@"
-	$(CPP) -o $@ $(OBJS) $(CPPFLAGS) $(LDFLAGS)
+	$(AT)$(CXX) -o $@ $(OBJS) $(CXXFLAGS) $(LDFLAGS)

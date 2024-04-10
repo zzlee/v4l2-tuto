@@ -1,14 +1,6 @@
-KERNEL_ROOT ?= $(shell realpath /lib/modules/$(shell uname -r))
-KERNEL_DIR ?= $(KERNEL_ROOT)/build
-COPY = cp -f
-MKDIR = mkdir -p
-RMDIR = rm -rvf
+KERNELRELEASE ?= $(shell uname -r)
+KERNEL_DIR ?= /lib/modules/$(KERNELRELEASE)/build
 PWD := $(shell pwd)
-DKMS := dkms
-DESTDIR :=
-PREFIX := $(DESTDIR)/usr/src
-INSTALLDIR := $(PREFIX)/$(MODULE_NAME)-$(MODULE_VERSION)
-
 MODULE_NAME = qvcam
 MODULE_VERSION = 0.0.1
 
