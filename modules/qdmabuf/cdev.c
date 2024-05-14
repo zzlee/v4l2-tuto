@@ -45,7 +45,7 @@ int qdmabuf_cdev_init(void) {
 
 void qdmabuf_cdev_cleanup(void) {
 	if(g_qdmabuf_cdev) {
-		device_destroy(g_qdmabuf_class, g_qdmabuf_cdev->dev);
+		device_destroy(g_qdmabuf_class, g_qdmabuf_cdev->cdevno);
 		cdev_del(&g_qdmabuf_cdev->cdev);
 		devm_kfree(g_qdmabuf_cdev->parent_device, g_qdmabuf_cdev);
 		g_qdmabuf_cdev = NULL;
@@ -82,18 +82,19 @@ int qdmabuf_cdev_create_interfaces(struct device* device) {
 	}
 
 	g_qdmabuf_cdev->parent_device = device;
-	g_qdmabuf_cdev->dev = MKDEV(g_major, 0);
+	g_qdmabuf_cdev->cdevno = MKDEV(g_major, 0);
 
 	cdev_init(&g_qdmabuf_cdev->cdev, &qdmabuf_fops);
 	g_qdmabuf_cdev->cdev.owner = THIS_MODULE;
 
-	err = cdev_add(&g_qdmabuf_cdev->cdev, g_qdmabuf_cdev->dev, 1);
+	err = cdev_add(&g_qdmabuf_cdev->cdev, g_qdmabuf_cdev->cdevno, 1);
 	if (err) {
 		dev_err(device, "%s(#%d): cdev_add() fail, err=%d\n", __func__, __LINE__, err);
 		goto cdev_add_failed;
 	}
 
-	g_qdmabuf_cdev->device = device_create(g_qdmabuf_class, NULL, g_qdmabuf_cdev->dev, NULL, QDMABUF_NODE_NAME "%d", MINOR(g_qdmabuf_cdev->dev));
+	g_qdmabuf_cdev->device = device_create(g_qdmabuf_class, NULL, g_qdmabuf_cdev->cdevno,
+		g_qdmabuf_cdev, QDMABUF_NODE_NAME "%d", MINOR(g_qdmabuf_cdev->cdevno));
 	if (IS_ERR(g_qdmabuf_cdev->device)) {
 		dev_err(device, "%s(#%d): device_create() fail, err=%d\n", __func__, __LINE__, err);
 		goto device_create_failed;

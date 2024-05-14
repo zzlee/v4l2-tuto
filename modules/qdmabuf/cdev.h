@@ -6,7 +6,7 @@
 struct qdmabuf_cdev {
 	struct device* parent_device;
 
-	dev_t dev;
+	dev_t cdevno;
 	struct cdev cdev;
 	struct device* device;
 };
