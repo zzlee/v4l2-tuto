@@ -4,8 +4,8 @@
 #include <linux/module.h>
 #include <linux/fs.h>
 
-#include "qdmabuf.h"
 #include "cdev.h"
+#include "uapi/qdmabuf.h"
 
 #define QDMABUF_NODE_NAME		"qdmabuf"
 #define QDMABUF_MINOR_BASE		(0)
@@ -16,27 +16,19 @@ static int g_major = 0;
 static struct qdmabuf_cdev* g_qdmabuf_cdev = NULL;
 
 static int qdmabuf_file_open(struct inode *inode, struct file *filp);
-static int qdmabuf_file_release(struct inode *inode, struct file *filp);
-static ssize_t qdmabuf_file_read(struct file *filp, char *buf, size_t size, loff_t *f_pos);
-static ssize_t qdmabuf_file_write(struct file *filp, const char *buf, size_t size, loff_t *f_pos);
 static long qdmabuf_file_ioctl(struct file * filp, unsigned int cmd, unsigned long arg);
-static __poll_t qdmabuf_file_poll(struct file *filp, struct poll_table_struct *wait);
-static int qdmabuf_mmap(struct file *filp, struct vm_area_struct *vma);
 
 static struct file_operations qdmabuf_fops = {
 	.open = qdmabuf_file_open,
-	.release = qdmabuf_file_release,
-	.read = qdmabuf_file_read,
-	.write = qdmabuf_file_write,
 	.unlocked_ioctl = qdmabuf_file_ioctl,
-	.poll = qdmabuf_file_poll,
-	.mmap = qdmabuf_mmap,
 };
+
+static long qdmabuf_ioctl_alloc(struct qdmabuf_cdev *qdmabuf_cdev, unsigned long arg);
 
 int qdmabuf_cdev_init(void) {
 	g_qdmabuf_class = class_create(THIS_MODULE, QDMABUF_NODE_NAME);
 	if (IS_ERR(g_qdmabuf_class)) {
-		dbg_init(QDMABUF_NODE_NAME ": failed to create class");
+		pr_err(QDMABUF_NODE_NAME ": failed to create class");
 		return -EINVAL;
 	}
 
@@ -115,43 +107,46 @@ alloc_chrdev_region_failed:
 }
 
 static int qdmabuf_file_open(struct inode *inode, struct file *filp) {
-	pr_err("%s(#%d): \n", __func__, __LINE__);
+	pr_info("%s(#%d): \n", __func__, __LINE__);
 
-	return 0;
-}
-
-static int qdmabuf_file_release(struct inode *inode, struct file *filp) {
-	pr_err("%s(#%d): \n", __func__, __LINE__);
-
-	return 0;
-}
-
-static ssize_t qdmabuf_file_read(struct file *filp, char *buf, size_t size, loff_t *f_pos) {
-	pr_err("%s(#%d): \n", __func__, __LINE__);
-
-	return 0;
-}
-
-static ssize_t qdmabuf_file_write(struct file *filp, const char *buf, size_t size, loff_t *f_pos) {
-	pr_err("%s(#%d): \n", __func__, __LINE__);
+	filp->private_data = g_qdmabuf_cdev;
+	nonseekable_open(inode, filp);
 
 	return 0;
 }
 
 static long qdmabuf_file_ioctl(struct file * filp, unsigned int cmd, unsigned long arg) {
-	pr_err("%s(#%d): \n", __func__, __LINE__);
+	struct qdmabuf_cdev *qdmabuf_cdev = filp->private_data;
+	long ret;
 
-	return 0;
+	pr_info("%s(#%d): \n", __func__, __LINE__);
+
+	switch(cmd) {
+	case QDMABUF_IOCTL_ALLOC:
+		ret = qdmabuf_ioctl_alloc(qdmabuf_cdev, arg);
+		break;
+
+	default:
+		ret = -EINVAL;
+		break;
+	}
+
+	return ret;
 }
 
-static __poll_t qdmabuf_file_poll(struct file *filp, struct poll_table_struct *wait) {
-	pr_err("%s(#%d): \n", __func__, __LINE__);
+static long qdmabuf_ioctl_alloc(struct qdmabuf_cdev *qdmabuf_cdev, unsigned long arg) {
+	struct qdmabuf_allocation_data args;
+	long ret;
 
-	return 0;
-}
+	pr_info("%s(#%d): \n", __func__, __LINE__);
 
-static int qdmabuf_mmap(struct file *filp, struct vm_area_struct *vma) {
-	pr_err("%s(#%d): \n", __func__, __LINE__);
+	if (copy_from_user(&args, (void __user *)arg, sizeof(args)) != 0) {
+		ret = -EFAULT;
+		goto err;
+	}
 
-	return 0;
+	ret = 0;
+
+err:
+	return ret;
 }

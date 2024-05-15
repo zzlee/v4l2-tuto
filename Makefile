@@ -3,7 +3,8 @@ SUBDIRS = \
 	modules/qdmabuf
 
 SUBDIRS += \
-	samples/01_v4l-ctl
+	samples/01_v4l-ctl \
+	samples/02_qdmabuf-ctl
 
 .PHONY: all
 all:
