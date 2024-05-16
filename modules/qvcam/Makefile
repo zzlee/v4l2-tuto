@@ -4,6 +4,8 @@ PWD := $(shell pwd)
 MODULE_NAME = qvcam
 MODULE_VERSION = 0.0.1
 
+$(info PWD=$(PWD))
+
 obj-m += $(MODULE_NAME).o
 $(MODULE_NAME)-objs := \
 	module.o \

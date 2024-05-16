@@ -4,11 +4,9 @@
 #include <linux/cdev.h>
 
 struct qdmabuf_cdev {
-	struct device* parent_device;
-
 	dev_t cdevno;
 	struct cdev cdev;
-	struct device* device;
+	struct device* device; // platform device
 };
 
 int qdmabuf_cdev_init(void);

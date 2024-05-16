@@ -5,7 +5,9 @@ PWD := $(shell pwd)
 obj-m += qdmabuf.o
 qdmabuf-objs := \
 	module.o \
-	cdev.o
+	cdev.o \
+	dmabuf_exp.o \
+	dmabuf_exp_contig.o
 
 ccflags-y += \
 -DQVCAM_MODULE_VERSION=\"$(MODULE_VERSION)\"

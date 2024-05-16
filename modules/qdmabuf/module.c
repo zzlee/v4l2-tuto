@@ -1,4 +1,4 @@
-#define pr_fmt(fmt)     KBUILD_MODNAME ":%s: " fmt, __func__
+#define pr_fmt(fmt)     "[" KBUILD_MODNAME "]%s: " fmt, __func__
 
 #include <linux/init.h>
 #include <linux/module.h>
@@ -30,33 +30,35 @@ static int qdmabuf_probe(struct platform_device *pdev)
 
 	drvdata = devm_kzalloc(&pdev->dev, sizeof(struct qdmabuf_drvdata), GFP_KERNEL);
 	if(! drvdata) {
-		dev_err(&(pdev->dev), "%s(#%d): devm_kzalloc() fail\n", __func__, __LINE__);
+		pr_err("%s(#%d): devm_kzalloc() failed, drvdata=%p\n", __func__, __LINE__, drvdata);
+
 		err = -ENOMEM;
-		goto drvdata_alloc_failed;
+		goto err0;
 	}
 	drvdata->device = &pdev->dev;
 
 	platform_set_drvdata(pdev, drvdata);
 
 	err = qdmabuf_cdev_init();
-	if(! drvdata) {
-		dev_err(&(pdev->dev), "%s(#%d): qdmabuf_cdev_init() fail, err=%d\n", __func__, __LINE__, err);
-		goto cdec_init_failed;
+	if(err) {
+		pr_err("%s(#%d): qdmabuf_cdev_init() failed, err=%d\n", __func__, __LINE__, err);
+
+		goto err1;
 	}
 
 	err = qdmabuf_cdev_create_interfaces(drvdata->device);
-	if(! drvdata) {
-		dev_err(&(pdev->dev), "%s(#%d): qdmabuf_create_interfaces() fail, err=%d\n", __func__, __LINE__, err);
-		goto cdev_create_interfaces_failed;
+	if(err) {
+		pr_err("%s(#%d): qdmabuf_cdev_create_interfaces() failed, err=%d\n", __func__, __LINE__, err);
+
+		goto err2;
 	}
 
 	return 0;
 
-cdev_create_interfaces_failed:
+err2:
 	qdmabuf_cdev_cleanup();
-cdec_init_failed:
-
-drvdata_alloc_failed:
+err1:
+err0:
 
 	return err;
 }
@@ -87,31 +89,34 @@ static int qdmabuf_mod_init(void)
 
 	qdmabuf_device = platform_device_alloc(DRV_MODULE_NAME, 0);
 	if (!qdmabuf_device) {
-		pr_err("%s(#%d): platform_device_alloc() fail\n", __func__, __LINE__);
+		pr_err("%s(#%d): platform_device_alloc() failed\n", __func__, __LINE__);
+
 		err = -ENOMEM;
-		goto dev_alloc_failed;
+		goto err0;
 	}
 
 	err = platform_device_add(qdmabuf_device);
 	if (err) {
-		pr_err("%s(#%d): platform_device_add() failed, err=%d\n",
-		   __func__, __LINE__, err);
-		goto dev_add_failed;
+		pr_err("%s(#%d): platform_device_add() failed, err=%d\n", __func__, __LINE__, err);
+
+		goto err1;
 	}
 
 	err = platform_driver_register(&qdmabuf_driver);
 	if (err) {
-		dev_err(&(qdmabuf_device->dev), "%s(#%d): platform_driver_register() fail, err=%d\n", __func__, __LINE__, err);
-		goto drv_reg_failed;
+		pr_err("%s(#%d): platform_driver_register() failed, err=%d\n", __func__, __LINE__, err);
+
+		goto err2;
 	}
 
 	return err;
 
-drv_reg_failed:
+err2:
 	platform_device_unregister(qdmabuf_device);
-dev_add_failed:
+err1:
 	platform_device_put(qdmabuf_device);
-dev_alloc_failed:
+	qdmabuf_device = NULL;
+err0:
 
 	return err;
 }
@@ -122,6 +127,8 @@ static void qdmabuf_mod_exit(void)
 
 	platform_driver_unregister(&qdmabuf_driver);
 	platform_device_unregister(qdmabuf_device);
+	platform_device_put(qdmabuf_device);
+	qdmabuf_device = NULL;
 }
 
 module_init(qdmabuf_mod_init);
