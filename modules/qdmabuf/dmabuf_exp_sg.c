@@ -3,49 +3,55 @@
 #include "dmabuf_exp.h"
 
 #include <linux/version.h>
-#include <linux/dma-buf.h>
 #include <linux/err.h>
 #include <linux/slab.h>
 
-struct exp_contig_buffer {
+struct exp_sg_buffer {
 	struct device *dev;
 	void *vaddr;
 	unsigned long size;
-	dma_addr_t dma_addr;
-	unsigned long attrs;
+	struct page **pages;
+	struct sg_table sg_table;
 
-	/* MMAP related */
 	struct dmabuf_exp_vmarea_handler handler;
 	refcount_t refcount;
-	struct sg_table *sgt_base;
+	struct sg_table *dma_sgt;
+	unsigned int num_pages;
 
-	/* DMABUF related */
 	struct dma_buf_attachment *db_attach;
 };
 
-struct exp_contig_attachment {
+struct exp_sg_attachment {
 	struct sg_table sgt;
 	enum dma_data_direction dma_dir;
 };
 
-static void exp_contig_buffer_put(void *buf_priv)
+static void exp_sg_buffer_put(void *buf_priv)
 {
-	struct exp_contig_buffer *buf = buf_priv;
+	struct exp_sg_buffer *buf = buf_priv;
 
 	if (!refcount_dec_and_test(&buf->refcount))
 		return;
 
-	if (buf->sgt_base) {
-		sg_free_table(buf->sgt_base);
-		kfree(buf->sgt_base);
-	}
-	dma_free_attrs(buf->dev, buf->size, buf->vaddr, buf->dma_addr, buf->attrs);
+	struct sg_table *sgt = &buf->sg_table;
+	int i = buf->num_pages;
+
+	dprintk(1, "%s: Freeing buffer of %d pages\n", __func__,
+		buf->num_pages);
+	dma_unmap_sg_attrs(buf->dev, sgt->sgl, sgt->orig_nents,
+		buf->dma_dir, DMA_ATTR_SKIP_CPU_SYNC);
+	if (buf->vaddr)
+		vm_unmap_ram(buf->vaddr, buf->num_pages);
+	sg_free_table(buf->dma_sgt);
+	while (--i >= 0)
+		__free_page(buf->pages[i]);
+	kvfree(buf->pages);
 	put_device(buf->dev);
 	kfree(buf);
 }
 
-static int exp_contig_attach(struct dma_buf *dbuf, struct dma_buf_attachment *dbuf_attach) {
-	struct exp_contig_attachment *attach;
+static int exp_sg_attach(struct dma_buf *dbuf, struct dma_buf_attachment *dbuf_attach) {
+	struct exp_sg_attachment *attach;
 	unsigned int i;
 	struct scatterlist *rd, *wr;
 	struct sg_table *sgt;
@@ -66,7 +72,7 @@ static int exp_contig_attach(struct dma_buf *dbuf, struct dma_buf_attachment *db
 	/* Copy the buf->base_sgt scatter list to the attachment, as we can't
 	 * map the same scatter list to multiple attachments at the same time.
 	 */
-	ret = sg_alloc_table(sgt, buf->sgt_base->orig_nents, GFP_KERNEL);
+	ret = sg_alloc_table(sgt, buf->dma_sgt->orig_nents, GFP_KERNEL);
 	if (ret) {
 		pr_err("%s(#%d): sg_alloc_table() failed, err=%d\n", __func__, __LINE__, ret);
 
@@ -75,7 +81,7 @@ static int exp_contig_attach(struct dma_buf *dbuf, struct dma_buf_attachment *db
 
 	pr_info("%s(#%d): sgt->orig_nents=%d\n", __func__, __LINE__, sgt->orig_nents);
 
-	rd = buf->sgt_base->sgl;
+	rd = buf->dma_sgt->sgl;
 	wr = sgt->sgl;
 	for (i = 0; i < sgt->orig_nents; ++i) {
 		sg_set_page(wr, sg_page(rd), rd->length, rd->offset);
@@ -94,8 +100,8 @@ err0:
 	return ret;
 }
 
-static void exp_contig_detach(struct dma_buf *dbuf, struct dma_buf_attachment *db_attach) {
-	struct exp_contig_attachment *attach = db_attach->priv;
+static void exp_sg_detach(struct dma_buf *dbuf, struct dma_buf_attachment *db_attach) {
+	struct exp_sg_attachment *attach = db_attach->priv;
 	struct sg_table *sgt;
 
 	pr_info("%s(#%d): attach=%p\n", __func__, __LINE__, attach);
@@ -127,17 +133,19 @@ err0:
 	return;
 }
 
-static void exp_contig_dma_buf_release(struct dma_buf *dbuf) {
-	struct exp_contig_buffer *buf = dbuf->priv;
+static void exp_sg_dma_buf_release(struct dma_buf *dbuf) {
+	struct exp_sg_buffer *buf = dbuf->priv;
 
 	pr_info("%s(#%d): buf=%p\n", __func__, __LINE__, buf);
 
-	exp_contig_buffer_put(dbuf->priv);
+	exp_sg_buffer_put(dbuf->priv);
 }
 
-static struct sg_table * exp_contig_map_dma_buf(struct dma_buf_attachment *db_attach,
+static struct sg_table * exp_sg_map_dma_buf(struct dma_buf_attachment *db_attach,
 	enum dma_data_direction dma_dir) {
-	struct exp_contig_attachment *attach = db_attach->priv;
+	struct exp_sg_attachment *attach = db_attach->priv;
+	/* stealing dmabuf mutex to serialize map/unmap operations */
+	struct mutex *lock = &db_attach->dmabuf->lock;
 	struct sg_table *sgt;
 	int err;
 
@@ -149,6 +157,8 @@ static struct sg_table * exp_contig_map_dma_buf(struct dma_buf_attachment *db_at
 		sgt = NULL;
 		goto err0;
 	}
+
+	mutex_lock(lock);
 
 	sgt = &attach->sgt;
 	/* return previously mapped sg table */
@@ -172,9 +182,11 @@ static struct sg_table * exp_contig_map_dma_buf(struct dma_buf_attachment *db_at
 	attach->dma_dir = dma_dir;
 
 done:
+	mutex_unlock(lock);
 	return sgt;
 
 err1:
+	mutex_unlock(lock);
 err0:
 	return sgt;
 }
@@ -254,15 +266,16 @@ err0:
 	return ret;
 }
 
-static const struct dma_buf_ops exp_contig_buf_ops = {
-	.attach = exp_contig_attach,
-	.detach = exp_contig_detach,
-	.map_dma_buf = exp_contig_map_dma_buf,
-	.unmap_dma_buf = exp_contig_unmap_dma_buf,
-	.release = exp_contig_dma_buf_release,
-	.mmap = exp_contig_mmap,
-	.vmap = exp_contig_vmap,
-	.vunmap = exp_contig_vunmap,
+static const struct dma_buf_ops exp_sg_buf_ops = {
+	.attach = exp_sg_attach,
+	.detach = exp_sg_detach,
+	.map_dma_buf = exp_sg_map_dma_buf,
+	.unmap_dma_buf = exp_sg_unmap_dma_buf,
+	.release = exp_sg_dma_buf_release,
+	.map = exp_sg_map,
+	.mmap = exp_sg_mmap,
+	.vmap = exp_sg_vmap,
+	.vunmap = exp_sg_vunmap,
 };
 
 int qdmabuf_dmabuf_alloc_contig(struct device* device, int len, int fd_flags) {

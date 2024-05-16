@@ -4,11 +4,6 @@
 #include <errno.h>
 #include <fcntl.h>
 #include <unistd.h>
-
-#if 0
-#include <linux/dma-heap.h>
-#endif
-
 #include <sys/ioctl.h>
 
 #include "qdmabuf.h"
@@ -54,36 +49,6 @@ namespace __02_qdmabuf_ctl__ {
 				close(fd_qdmabuf);
 			};
 
-#if 0
-			fd_dma_heap = open("/dev/dma_heap/system", O_RDWR);
-			if(fd_dma_heap == -1) {
-				err = errno;
-				LOGE("%s(%d): open() failed, err=%d", __FUNCTION__, __LINE__, err);
-				break;
-			}
-			oFreeStack += [&]() {
-				close(fd_dma_heap);
-			};
-
-			LOGD("Allocate dma-heap...");
-			{
-				dma_heap_allocation_data args;
-				args.len = 4096;
-				args.fd = 0;
-				args.fd_flags = DMA_HEAP_VALID_FD_FLAGS | O_RDWR | O_CLOEXEC;
-				args.heap_flags = DMA_HEAP_VALID_HEAP_FLAGS;
-				err = ioctl(fd_dma_heap, DMA_HEAP_IOCTL_ALLOC, &args);
-				if(err) {
-					err = errno;
-					LOGE("%s(%d): ioctl(DMA_HEAP_IOCTL_ALLOC) failed, err=%d", __FUNCTION__, __LINE__, err);
-					break;
-				}
-
-				LOGD("args={.len=%d, .fd=%d}", args.len, args.fd);
-
-				fd_dma_buf = args.fd;
-			}
-#else
 			{
 				qdmabuf_alloc_args args;
 				args.len = 4 * 1024 * 1024;
@@ -101,12 +66,10 @@ namespace __02_qdmabuf_ctl__ {
 
 				fd_dma_buf = args.fd;
 			}
-#endif
 			oFreeStack += [&]() {
 				close(fd_dma_buf);
 			};
 
-#if 1
 			{
 				qdmabuf_info_args args;
 				args.fd = fd_dma_buf;
@@ -117,7 +80,6 @@ namespace __02_qdmabuf_ctl__ {
 					break;
 				}
 			}
-#endif
 
 			ZzUtils::TestLoop([&]() -> int {
 				return 0;

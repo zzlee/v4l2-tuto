@@ -7,7 +7,8 @@ qdmabuf-objs := \
 	module.o \
 	cdev.o \
 	dmabuf_exp.o \
-	dmabuf_exp_contig.o
+	dmabuf_exp_contig.o \
+	dmabuf_exp_sg.o
 
 ccflags-y += \
 -DQVCAM_MODULE_VERSION=\"$(MODULE_VERSION)\"
