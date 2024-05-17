@@ -11,11 +11,17 @@
  * DOC: QDMABUF Userspace API
  */
 
-#define QDMABUF_ALLOC_TYPE_CONTIG	0x00
-#define QDMABUF_ALLOC_TYPE_SG		0x01
-#define QDMABUF_ALLOC_TYPE_VMALLOC	0x02
+#define QDMABUF_TYPE_DMA_CONTIG		0x00
+#define QDMABUF_TYPE_DMA_SG			0x01
+#define QDMABUF_TYPE_VMALLOC		0x02
+#define QDMABUF_TYPE_SYS_HEAP		0x03
 
-#define QDMABUF_ALLOC_FD_FLAGS (O_CLOEXEC | O_ACCMODE)
+#define QDMABUF_VALID_FD_FLAGS 	(O_CLOEXEC | O_ACCMODE)
+
+#define QDMABUF_DMA_DIR_BIDIRECTIONAL	0
+#define QDMABUF_DMA_DIR_TO_DEVICE		1
+#define QDMABUF_DMA_DIR_FROM_DEVICE		2
+#define QDMABUF_DMA_DIR_NONE			3
 
 /**
  * struct qdmabuf_alloc_args - metadata passed from userspace for
@@ -27,6 +33,7 @@ struct qdmabuf_alloc_args {
 	__u64 len;
 	__u32 type;
 	__u32 fd_flags;
+	__u32 dma_dir;
 	__u32 fd;
 };
 

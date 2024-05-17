@@ -13,8 +13,9 @@ struct dmabuf_exp_vmarea_handler {
 
 extern const struct vm_operations_struct dmabuf_exp_vm_ops;
 
-int qdmabuf_dmabuf_alloc_contig(struct device* device, int len, int fd_flags);
-int qdmabuf_dmabuf_alloc_sg(struct device* device, int len, int fd_flags);
-int qdmabuf_dmabuf_alloc_vmalloc(struct device* device, int len, int fd_flags);
+int qdmabuf_dmabuf_alloc_dma_contig(struct device* device, int len, int fd_flags, int dma_dir);
+int qdmabuf_dmabuf_alloc_dma_sg(struct device* device, int len, int fd_flags, int dma_dir);
+int qdmabuf_dmabuf_alloc_vmalloc(struct device* device, int len, int fd_flags, int dma_dir);
+int qdmabuf_dmabuf_alloc_sys_heap(struct device* device, int len, int fd_flags, int dma_dir);
 
 #endif // __QDMABUF_DMABUF_EXP_H__

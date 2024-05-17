@@ -1,4 +1,4 @@
-#define pr_fmt(fmt)     "[" KBUILD_MODNAME "]%s: " fmt, __func__
+#define pr_fmt(fmt)     "[" KBUILD_MODNAME "]%s(#%d): " fmt, __func__, __LINE__
 
 #include <linux/init.h>
 #include <linux/module.h>
@@ -26,11 +26,11 @@ static int qdmabuf_probe(struct platform_device *pdev)
 	int err;
 	struct qdmabuf_drvdata* drvdata;
 
-	pr_info("%s(#%d)\n", __func__, __LINE__);
+	pr_info("\n");
 
 	drvdata = devm_kzalloc(&pdev->dev, sizeof(struct qdmabuf_drvdata), GFP_KERNEL);
 	if(! drvdata) {
-		pr_err("%s(#%d): devm_kzalloc() failed, drvdata=%p\n", __func__, __LINE__, drvdata);
+		pr_err("devm_kzalloc() failed, drvdata=%p\n", drvdata);
 
 		err = -ENOMEM;
 		goto err0;
@@ -41,14 +41,14 @@ static int qdmabuf_probe(struct platform_device *pdev)
 
 	err = qdmabuf_cdev_init();
 	if(err) {
-		pr_err("%s(#%d): qdmabuf_cdev_init() failed, err=%d\n", __func__, __LINE__, err);
+		pr_err("qdmabuf_cdev_init() failed, err=%d\n", err);
 
 		goto err1;
 	}
 
 	err = qdmabuf_cdev_create_interfaces(drvdata->device);
 	if(err) {
-		pr_err("%s(#%d): qdmabuf_cdev_create_interfaces() failed, err=%d\n", __func__, __LINE__, err);
+		pr_err("qdmabuf_cdev_create_interfaces() failed, err=%d\n", err);
 
 		goto err2;
 	}
@@ -65,7 +65,7 @@ err0:
 
 static int qdmabuf_remove(struct platform_device *pdev)
 {
-	pr_info("%s(#%d)\n", __func__, __LINE__);
+	pr_info("\n");
 
 	qdmabuf_cdev_cleanup();
 
@@ -89,7 +89,7 @@ static int qdmabuf_mod_init(void)
 
 	qdmabuf_device = platform_device_alloc(DRV_MODULE_NAME, 0);
 	if (!qdmabuf_device) {
-		pr_err("%s(#%d): platform_device_alloc() failed\n", __func__, __LINE__);
+		pr_err("platform_device_alloc() failed\n");
 
 		err = -ENOMEM;
 		goto err0;
@@ -97,14 +97,14 @@ static int qdmabuf_mod_init(void)
 
 	err = platform_device_add(qdmabuf_device);
 	if (err) {
-		pr_err("%s(#%d): platform_device_add() failed, err=%d\n", __func__, __LINE__, err);
+		pr_err("platform_device_add() failed, err=%d\n", err);
 
 		goto err1;
 	}
 
 	err = platform_driver_register(&qdmabuf_driver);
 	if (err) {
-		pr_err("%s(#%d): platform_driver_register() failed, err=%d\n", __func__, __LINE__, err);
+		pr_err("platform_driver_register() failed, err=%d\n", err);
 
 		goto err2;
 	}

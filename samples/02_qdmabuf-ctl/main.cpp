@@ -35,11 +35,13 @@ namespace __02_qdmabuf_ctl__ {
 		ZzUtils::FreeStack oFreeStack;
 
 		int fd_qdmabuf;
-		int fd_dma_heap;
-		int fd_dma_buf;
+		int fd_dma_buf_dma_contig[4];
+		int fd_dma_buf_dma_sg[4];
+		int fd_dma_buf_vmalloc[4];
+		int fd_dma_buf_sys_heap[4];
 
 		switch(1) { case 1:
-			fd_qdmabuf = open("/dev/qdmabuf0", O_RDWR);
+			fd_qdmabuf = open("/dev/qdmabuf", O_RDWR);
 			if(fd_qdmabuf == -1) {
 				err = errno;
 				LOGE("%s(%d): open() failed, err=%d", __FUNCTION__, __LINE__, err);
@@ -49,30 +51,34 @@ namespace __02_qdmabuf_ctl__ {
 				close(fd_qdmabuf);
 			};
 
-			{
+#if 0
+			for(int i = 0;i < 4;i++) {
 				qdmabuf_alloc_args args;
 				args.len = 4 * 1024 * 1024;
-				args.type = QDMABUF_ALLOC_TYPE_CONTIG;
+				args.type = QDMABUF_TYPE_DMA_CONTIG;
 				args.fd_flags = O_RDWR | O_CLOEXEC;
+				args.dma_dir = QDMABUF_DMA_DIR_BIDIRECTIONAL;
 				args.fd = 0;
 				err = ioctl(fd_qdmabuf, QDMABUF_IOCTL_ALLOC, &args);
-				if(err) {
-					err = errno;
+				if(err < 0) {
 					LOGE("%s(%d): ioctl(QDMABUF_IOCTL_ALLOC) failed, err=%d", __FUNCTION__, __LINE__, err);
 					break;
 				}
 
 				LOGD("args={.len=%d, .fd=%d}", args.len, args.fd);
 
-				fd_dma_buf = args.fd;
+				fd_dma_buf_dma_contig[i] = args.fd;
+				oFreeStack += [&]() {
+					close(fd_dma_buf_dma_contig[i]);
+				};
 			}
-			oFreeStack += [&]() {
-				close(fd_dma_buf);
-			};
 
-			{
+			if(err < 0)
+				break;
+
+			for(int i = 0;i < 4;i++) {
 				qdmabuf_info_args args;
-				args.fd = fd_dma_buf;
+				args.fd = fd_dma_buf_dma_contig[i];
 				err = ioctl(fd_qdmabuf, QDMABUF_IOCTL_INFO, &args);
 				if(err) {
 					err = errno;
@@ -80,6 +86,133 @@ namespace __02_qdmabuf_ctl__ {
 					break;
 				}
 			}
+
+			if(err < 0)
+				break;
+#endif
+
+#if 0
+			for(int i = 0;i < 4;i++) {
+				qdmabuf_alloc_args args;
+				args.len = 2 * 1024 * 1024;
+				args.type = QDMABUF_TYPE_DMA_SG;
+				args.fd_flags = O_RDWR | O_CLOEXEC;
+				args.dma_dir = QDMABUF_DMA_DIR_BIDIRECTIONAL;
+				args.fd = 0;
+				err = ioctl(fd_qdmabuf, QDMABUF_IOCTL_ALLOC, &args);
+				if(err < 0) {
+					LOGE("%s(%d): ioctl(QDMABUF_IOCTL_ALLOC) failed, err=%d", __FUNCTION__, __LINE__, err);
+					break;
+				}
+
+				LOGD("args={.len=%d, .fd=%d}", args.len, args.fd);
+
+				fd_dma_buf_dma_sg[i] = args.fd;
+
+				oFreeStack += [&, i]() {
+					close(fd_dma_buf_dma_sg[i]);
+				};
+			}
+
+			if(err < 0)
+				break;
+
+			for(int i = 0;i < 4;i++) {
+				qdmabuf_info_args args;
+				args.fd = fd_dma_buf_dma_sg[i];
+				err = ioctl(fd_qdmabuf, QDMABUF_IOCTL_INFO, &args);
+				if(err) {
+					err = errno;
+					LOGE("%s(%d): ioctl(QDMABUF_IOCTL_INFO) failed, err=%d", __FUNCTION__, __LINE__, err);
+					break;
+				}
+			}
+
+			if(err < 0)
+				break;
+#endif
+
+#if 0
+			for(int i = 0;i < 4;i++) {
+				qdmabuf_alloc_args args;
+				args.len = 16 * 1024 * 1024;
+				args.type = QDMABUF_TYPE_VMALLOC;
+				args.fd_flags = O_RDWR | O_CLOEXEC;
+				args.dma_dir = QDMABUF_DMA_DIR_BIDIRECTIONAL;
+				args.fd = 0;
+				err = ioctl(fd_qdmabuf, QDMABUF_IOCTL_ALLOC, &args);
+				if(err < 0) {
+					LOGE("%s(%d): ioctl(QDMABUF_IOCTL_ALLOC) failed, err=%d", __FUNCTION__, __LINE__, err);
+					break;
+				}
+
+				LOGD("args={.len=%d, .fd=%d}", args.len, args.fd);
+
+				fd_dma_buf_vmalloc[i] = args.fd;
+				oFreeStack += [&, i]() {
+					close(fd_dma_buf_vmalloc[i]);
+				};
+			}
+
+			if(err < 0)
+				break;
+
+			for(int i = 0;i < 4;i++) {
+				qdmabuf_info_args args;
+				args.fd = fd_dma_buf_vmalloc[i];
+				err = ioctl(fd_qdmabuf, QDMABUF_IOCTL_INFO, &args);
+				if(err) {
+					err = errno;
+					LOGE("%s(%d): ioctl(QDMABUF_IOCTL_INFO) failed, err=%d", __FUNCTION__, __LINE__, err);
+					break;
+				}
+			}
+
+			if(err < 0)
+				break;
+#endif
+
+#if 1
+			for(int i = 0;i < 4;i++) {
+				qdmabuf_alloc_args args;
+				args.len = 1 * 1024 * getpagesize();
+				args.type = QDMABUF_TYPE_SYS_HEAP;
+				args.fd_flags = O_RDWR | O_CLOEXEC;
+				args.dma_dir = QDMABUF_DMA_DIR_BIDIRECTIONAL;
+				args.fd = 0;
+				err = ioctl(fd_qdmabuf, QDMABUF_IOCTL_ALLOC, &args);
+				if(err < 0) {
+					LOGE("%s(%d): ioctl(QDMABUF_IOCTL_ALLOC) failed, err=%d", __FUNCTION__, __LINE__, err);
+					break;
+				}
+
+				LOGD("args={.len=%d, .fd=%d}", args.len, args.fd);
+
+				fd_dma_buf_sys_heap[i] = args.fd;
+				oFreeStack += [&]() {
+					close(fd_dma_buf_sys_heap[i]);
+				};
+			}
+
+			if(err < 0)
+				break;
+
+#if 1
+			for(int i = 0;i < 4;i++) {
+				qdmabuf_info_args args;
+				args.fd = fd_dma_buf_sys_heap[i];
+				err = ioctl(fd_qdmabuf, QDMABUF_IOCTL_INFO, &args);
+				if(err) {
+					err = errno;
+					LOGE("%s(%d): ioctl(QDMABUF_IOCTL_INFO) failed, err=%d", __FUNCTION__, __LINE__, err);
+					break;
+				}
+			}
+
+			if(err < 0)
+				break;
+#endif
+#endif
 
 			ZzUtils::TestLoop([&]() -> int {
 				return 0;

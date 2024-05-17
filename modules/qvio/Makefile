@@ -2,21 +2,21 @@ KERNELRELEASE ?= $(shell uname -r)
 KERNEL_DIR ?= /lib/modules/$(KERNELRELEASE)/build
 PWD := $(shell pwd)
 
-obj-m += qdmabuf.o
-qdmabuf-objs := \
+obj-m += qvio.o
+qvio-objs := \
 	module.o \
-	cdev.o \
-	dmabuf_exp.o \
-	dmabuf_exp_dma_contig.o \
-	dmabuf_exp_dma_sg.o \
-	dmabuf_exp_vmalloc.o \
-	dmabuf_exp_sys_heap.o
+	queue.o \
+	device.o \
+	ioctl.o
 
 ccflags-y += \
--DQDMABUF_MODULE_VERSION=\"$(MODULE_VERSION)\"
+-DQVIO_MODULE_VERSION=\"$(MODULE_VERSION)\"
 
 all:
 	$(MAKE) -C $(KERNEL_DIR) M=$(PWD) modules
 
 clean:
 	$(MAKE) -C $(KERNEL_DIR) M=$(PWD) clean
+
+modules_install:
+	$(MAKE) -C $(KERNEL_DIR) M=$(PWD) modules_install

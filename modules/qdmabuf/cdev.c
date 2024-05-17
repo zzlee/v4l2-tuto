@@ -1,4 +1,4 @@
-#define pr_fmt(fmt)     "[" KBUILD_MODNAME "]%s: " fmt, __func__
+#define pr_fmt(fmt)     "[" KBUILD_MODNAME "]%s(#%d): " fmt, __func__, __LINE__
 
 #include <linux/device.h>
 #include <linux/module.h>
@@ -31,7 +31,7 @@ static struct file_operations qdmabuf_fops = {
 int qdmabuf_cdev_init(void) {
 	g_qdmabuf_class = class_create(THIS_MODULE, QDMABUF_NODE_NAME);
 	if (IS_ERR(g_qdmabuf_class)) {
-		pr_err("%s(#%d): class_create() failed, g_qdmabuf_class=%p\n", __func__, __LINE__, g_qdmabuf_class);
+		pr_err("class_create() failed, g_qdmabuf_class=%p\n", g_qdmabuf_class);
 
 		return -EINVAL;
 	}
@@ -66,7 +66,7 @@ int qdmabuf_cdev_create_interfaces(struct device* device) {
 
 	err = alloc_chrdev_region(&dev, QDMABUF_MINOR_BASE, QDMABUF_MINOR_COUNT, QDMABUF_NODE_NAME);
 	if (err) {
-		pr_err("%s(#%d): alloc_chrdev_region() failed, err=%d\n", __func__, __LINE__, err);
+		pr_err("alloc_chrdev_region() failed, err=%d\n", err);
 		goto err0;
 	}
 
@@ -76,7 +76,7 @@ int qdmabuf_cdev_create_interfaces(struct device* device) {
 
 	g_qdmabuf_cdev = devm_kzalloc(device, sizeof(struct qdmabuf_cdev), GFP_KERNEL);
 	if(! g_qdmabuf_cdev) {
-		pr_err("%s(#%d): devm_kzalloc() failed\n", __func__, __LINE__);
+		pr_err("devm_kzalloc() failed\n");
 		err = -ENOMEM;
 		goto err1;
 	}
@@ -89,14 +89,14 @@ int qdmabuf_cdev_create_interfaces(struct device* device) {
 
 	err = cdev_add(&g_qdmabuf_cdev->cdev, g_qdmabuf_cdev->cdevno, 1);
 	if (err) {
-		pr_err("%s(#%d): cdev_add() failed, err=%d\n", __func__, __LINE__, err);
+		pr_err("cdev_add() failed, err=%d\n", err);
 		goto err2;
 	}
 
 	new_device = device_create(g_qdmabuf_class, NULL, g_qdmabuf_cdev->cdevno,
-		g_qdmabuf_cdev, QDMABUF_NODE_NAME "%d", MINOR(g_qdmabuf_cdev->cdevno));
+		g_qdmabuf_cdev, QDMABUF_NODE_NAME);
 	if (IS_ERR(new_device)) {
-		pr_err("%s(#%d): device_create() failed, new_device=%p\n", __func__, __LINE__, new_device);
+		pr_err("device_create() failed, new_device=%p\n", new_device);
 		goto err3;
 	}
 
@@ -117,7 +117,7 @@ err0:
 }
 
 static int qdmabuf_file_open(struct inode *inode, struct file *filp) {
-	pr_info("%s(#%d): \n", __func__, __LINE__);
+	pr_info("\n");
 
 	filp->private_data = g_qdmabuf_cdev;
 	nonseekable_open(inode, filp);
@@ -130,36 +130,52 @@ static long qdmabuf_ioctl_alloc(struct file * filp, unsigned long arg) {
 	struct qdmabuf_cdev* qdmabuf_cdev = filp->private_data;
 	long ret = 0;
 
-	pr_info("%s(#%d): \n", __func__, __LINE__);
+	pr_info("\n");
 
 	ret = copy_from_user(&args, (void __user *)arg, sizeof(args));
 	if (ret != 0) {
-		pr_err("%s(#%d): copy_from_user() failed, err=%d\n", __func__, __LINE__, (int)ret);
+		pr_err("copy_from_user() failed, err=%d\n", (int)ret);
 
 		ret = -EFAULT;
 		goto err;
 	}
 
 	switch(args.type) {
-	case QDMABUF_ALLOC_TYPE_CONTIG:
-		args.fd = qdmabuf_dmabuf_alloc_contig(qdmabuf_cdev->device, args.len, args.fd_flags);
+	case QDMABUF_TYPE_DMA_CONTIG:
+		ret = qdmabuf_dmabuf_alloc_dma_contig(
+			qdmabuf_cdev->device, args.len, args.fd_flags, args.dma_dir);
+		break;
+
+	case QDMABUF_TYPE_DMA_SG:
+		ret = qdmabuf_dmabuf_alloc_dma_sg(
+			qdmabuf_cdev->device, args.len, args.fd_flags, args.dma_dir);
+		break;
+
+	case QDMABUF_TYPE_VMALLOC:
+		ret = qdmabuf_dmabuf_alloc_vmalloc(
+			qdmabuf_cdev->device, args.len, args.fd_flags, args.dma_dir);
+		break;
+
+	case QDMABUF_TYPE_SYS_HEAP:
+		ret = qdmabuf_dmabuf_alloc_sys_heap(
+			qdmabuf_cdev->device, args.len, args.fd_flags, args.dma_dir);
 		break;
 
 	default:
-		args.fd = -EINVAL;
+		ret = -EINVAL;
 		break;
 	}
 
-	if (args.fd < 0) {
-		pr_err("%s(#%d): qdmabuf_dmabuf_alloc_xxx() failed, err=%d\n", __func__, __LINE__, args.fd);
-
-		ret = args.fd;
+	if (ret < 0) {
+		pr_err("qdmabuf_dmabuf_alloc_xxx() failed, err=%d\n", (int)ret);
 		goto err;
 	}
 
+	args.fd = (__u32)ret;
+
 	ret = copy_to_user((void __user *)arg, &args, sizeof(args));
 	if (ret != 0) {
-		pr_err("%s(#%d): copy_to_user() failed, err=%d\n", __func__, __LINE__, (int)ret);
+		pr_err("copy_to_user() failed, err=%d\n", (int)ret);
 
 		ret = -EFAULT;
 		goto err;
@@ -169,6 +185,26 @@ err:
 	return ret;
 }
 
+static void sgt_dump(struct sg_table *sgt)
+{
+	int i;
+	struct scatterlist *sg = sgt->sgl;
+
+	pr_info("sgt 0x%p, sgl 0x%p, nents %u/%u.\n", sgt, sgt->sgl, sgt->nents,
+		sgt->orig_nents);
+
+	for (i = 0; i < sgt->orig_nents; i++, sg = sg_next(sg)) {
+		if(i > 8) {
+			pr_info("... more pages ...");
+			break;
+		}
+
+		pr_info("%d, 0x%p, pg 0x%p,%u+%u, dma 0x%llx,%u.\n", i, sg,
+			sg_page(sg), sg->offset, sg->length, sg_dma_address(sg),
+			sg_dma_len(sg));
+	}
+}
+
 static long qdmabuf_ioctl_info(struct file * filp, unsigned long arg) {
 	long ret;
 	struct qdmabuf_info_args args;
@@ -176,14 +212,12 @@ static long qdmabuf_ioctl_info(struct file * filp, unsigned long arg) {
 	struct dma_buf_attachment *attach;
 	struct sg_table *sgt;
 	struct qdmabuf_cdev* qdmabuf_cdev = filp->private_data;
-	int i;
-	struct scatterlist *sg;
 
-	pr_info("%s(#%d): \n", __func__, __LINE__);
+	pr_info("\n");
 
 	ret = copy_from_user(&args, (void __user *)arg, sizeof(args));
 	if (ret != 0) {
-		pr_err("%s(#%d): copy_from_user() failed, err=%d\n", __func__, __LINE__, (int)ret);
+		pr_err("copy_from_user() failed, err=%d\n", (int)ret);
 
 		ret = -EFAULT;
 		goto err0;
@@ -193,7 +227,7 @@ static long qdmabuf_ioctl_info(struct file * filp, unsigned long arg) {
 
 	dmabuf = dma_buf_get(args.fd);
 	if (IS_ERR(dmabuf)) {
-		pr_err("%s(#%d): dma_buf_get() failed, dmabuf=%p\n", __func__, __LINE__, dmabuf);
+		pr_err("dma_buf_get() failed, dmabuf=%p\n", dmabuf);
 
 		ret = -EINVAL;
 		goto err0;
@@ -203,7 +237,7 @@ static long qdmabuf_ioctl_info(struct file * filp, unsigned long arg) {
 
 	attach = dma_buf_attach(dmabuf, qdmabuf_cdev->device);
 	if (IS_ERR(attach)) {
-		pr_err("%s(#%d): dma_buf_attach() failed, attach=%p\n", __func__, __LINE__, attach);
+		pr_err("dma_buf_attach() failed, attach=%p\n", attach);
 
 		ret = -EINVAL;
 		goto err1;
@@ -211,25 +245,27 @@ static long qdmabuf_ioctl_info(struct file * filp, unsigned long arg) {
 
 	pr_info("attach=%p\n", attach);
 
-	sgt = dma_buf_map_attachment(attach, DMA_BIDIRECTIONAL);
-	if (IS_ERR(sgt)) {
-		pr_err("%s(#%d): dma_buf_map_attachment() failed, sgt=%p\n", __func__, __LINE__, sgt);
-
-		ret = -EINVAL;
+	ret = dma_buf_begin_cpu_access(dmabuf, DMA_FROM_DEVICE);
+	if (IS_ERR(attach)) {
+		pr_err("dma_buf_begin_cpu_access() failed, attach=%p\n", attach);
 		goto err2;
 	}
 
-	pr_info("sg_dma_len(sgt->sgl)=%d\n",
-		(int)sg_dma_len(sgt->sgl));
+	sgt = dma_buf_map_attachment(attach, DMA_FROM_DEVICE);
+	if (IS_ERR(sgt)) {
+		pr_err("dma_buf_map_attachment() failed, sgt=%p\n", sgt);
 
-	for_each_sgtable_dma_sg(sgt, sg, i) {
-		pr_info("sg[%d]={.offset=%d, .length=%d .dma_address=%p}\n",
-			i, sg->offset, sg->length, (void*)sg->dma_address);
+		ret = -EINVAL;
+		goto err3;
 	}
+
+	sgt_dump(sgt);
 
 	ret = 0;
 
-	dma_buf_unmap_attachment(attach, sgt, DMA_BIDIRECTIONAL);
+	dma_buf_unmap_attachment(attach, sgt, DMA_FROM_DEVICE);
+err3:
+	dma_buf_end_cpu_access(dmabuf, DMA_FROM_DEVICE);
 err2:
 	dma_buf_detach(dmabuf, attach);
 err1:
@@ -240,8 +276,6 @@ err0:
 
 static long qdmabuf_file_ioctl(struct file * filp, unsigned int cmd, unsigned long arg) {
 	long ret;
-
-	pr_info("%s(#%d): \n", __func__, __LINE__);
 
 	switch(cmd) {
 	case QDMABUF_IOCTL_ALLOC:

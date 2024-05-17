@@ -1,4 +1,4 @@
-#define pr_fmt(fmt)     "[" KBUILD_MODNAME "]%s: " fmt, __func__
+#define pr_fmt(fmt)     "[" KBUILD_MODNAME "]%s(#%d): " fmt, __func__, __LINE__
 
 #include "dmabuf_exp.h"
 
@@ -6,9 +6,9 @@ static void dmabuf_exp_vm_open(struct vm_area_struct *vma)
 {
 	struct dmabuf_exp_vmarea_handler *h = vma->vm_private_data;
 
-	pr_debug("%s: %p, refcount: %d, vma: %08lx-%08lx\n",
-	       __func__, h, refcount_read(h->refcount), vma->vm_start,
-	       vma->vm_end);
+	pr_debug("%p, refcount: %d, vma: %08lx-%08lx\n",
+		h, refcount_read(h->refcount), vma->vm_start,
+		vma->vm_end);
 
 	refcount_inc(h->refcount);
 }
@@ -17,9 +17,9 @@ static void dmabuf_exp_vm_close(struct vm_area_struct *vma)
 {
 	struct dmabuf_exp_vmarea_handler *h = vma->vm_private_data;
 
-	pr_debug("%s: %p, refcount: %d, vma: %08lx-%08lx\n",
-	       __func__, h, refcount_read(h->refcount), vma->vm_start,
-	       vma->vm_end);
+	pr_debug("%p, refcount: %d, vma: %08lx-%08lx\n",
+		h, refcount_read(h->refcount), vma->vm_start,
+		vma->vm_end);
 
 	h->put(h->arg);
 }

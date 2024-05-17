@@ -11,7 +11,6 @@ struct qdmabuf_cdev {
 
 int qdmabuf_cdev_init(void);
 void qdmabuf_cdev_cleanup(void);
-
 int qdmabuf_cdev_create_interfaces(struct device* device);
 
 #endif // __QDMABUF_CDEV_H__
