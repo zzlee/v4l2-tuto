@@ -1,10 +1,12 @@
 #define pr_fmt(fmt)     "[" KBUILD_MODNAME "]%s(#%d): " fmt, __func__, __LINE__
 
+#include <linux/version.h>
 #include <linux/device.h>
 #include <linux/module.h>
 #include <linux/fs.h>
 #include <linux/dma-buf.h>
 #include <linux/uaccess.h>
+#include <linux/wait.h>
 
 MODULE_IMPORT_NS(DMA_BUF);
 
@@ -87,6 +89,9 @@ int qdmabuf_cdev_create_interfaces(struct device* device) {
 	cdev_init(&g_qdmabuf_cdev->cdev, &qdmabuf_fops);
 	g_qdmabuf_cdev->cdev.owner = THIS_MODULE;
 
+	g_qdmabuf_cdev->wq_event = 0;
+	init_waitqueue_head(&g_qdmabuf_cdev->wq_head);
+
 	err = cdev_add(&g_qdmabuf_cdev->cdev, g_qdmabuf_cdev->cdevno, 1);
 	if (err) {
 		pr_err("cdev_add() failed, err=%d\n", err);
@@ -156,10 +161,13 @@ static long qdmabuf_ioctl_alloc(struct file * filp, unsigned long arg) {
 			qdmabuf_cdev->device, args.len, args.fd_flags, args.dma_dir);
 		break;
 
+#if LINUX_VERSION_CODE <= KERNEL_VERSION(5,9,0)
+#else
 	case QDMABUF_TYPE_SYS_HEAP:
 		ret = qdmabuf_dmabuf_alloc_sys_heap(
 			qdmabuf_cdev->device, args.len, args.fd_flags, args.dma_dir);
 		break;
+#endif
 
 	default:
 		ret = -EINVAL;
@@ -274,6 +282,67 @@ err0:
 	return ret;
 }
 
+static long qdmabuf_ioctl_wq(struct file * filp, unsigned long arg) {
+	long ret;
+	struct qdmabuf_wq_args args;
+	struct qdmabuf_cdev* qdmabuf_cdev = filp->private_data;
+	__u32 last_wq_event;
+	int err;
+
+	pr_info("\n");
+
+	ret = copy_from_user(&args, (void __user *)arg, sizeof(args));
+	if (ret != 0) {
+		pr_err("copy_from_user() failed, err=%d\n", (int)ret);
+
+		ret = -EFAULT;
+		goto err0;
+	}
+
+	switch(args.type) {
+	case 0: // consumer
+		last_wq_event = g_qdmabuf_cdev->wq_event;
+		err = wait_event_interruptible(g_qdmabuf_cdev->wq_head, (last_wq_event != g_qdmabuf_cdev->wq_event));
+		if(err) {
+			pr_err("wait_event_interruptible() failed, err=%d\n", err);
+			ret = err;
+			break;
+		}
+
+		pr_info("g_qdmabuf_cdev->wq_event=%d\n", (int)g_qdmabuf_cdev->wq_event);
+		args.value = g_qdmabuf_cdev->wq_event;
+
+		ret = copy_to_user((void __user *)arg, &args, sizeof(args));
+		if (ret != 0) {
+			pr_err("copy_to_user() failed, err=%d\n", (int)ret);
+
+			ret = -EFAULT;
+			goto err0;
+		}
+
+		ret = 0;
+		break;
+
+	case 1: // producer
+		g_qdmabuf_cdev->wq_event = args.value;
+		pr_info("g_qdmabuf_cdev->wq_event=%d\n", (int)g_qdmabuf_cdev->wq_event);
+
+		wake_up_interruptible(&g_qdmabuf_cdev->wq_head);
+		ret = 0;
+		break;
+
+	default:
+		pr_err("unexpected value, args.type=%d\n", args.type);
+		ret = -EINVAL;
+		goto err0;
+		break;
+	}
+
+
+err0:
+	return ret;
+}
+
 static long qdmabuf_file_ioctl(struct file * filp, unsigned int cmd, unsigned long arg) {
 	long ret;
 
@@ -284,6 +353,10 @@ static long qdmabuf_file_ioctl(struct file * filp, unsigned int cmd, unsigned lo
 
 	case QDMABUF_IOCTL_INFO:
 		ret = qdmabuf_ioctl_info(filp, arg);
+		break;
+
+	case QDMABUF_IOCTL_WQ:
+		ret = qdmabuf_ioctl_wq(filp, arg);
 		break;
 
 	default:

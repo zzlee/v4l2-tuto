@@ -41,13 +41,15 @@ struct qdmabuf_info_args {
 	__u32 fd;
 };
 
+struct qdmabuf_wq_args {
+	__u16 type;
+	__u32 value;
+};
+
 #define QDMABUF_IOC_MAGIC		'Q'
 
-/**
- * DOC: QDMABUF_IOCTL_ALLOC - allocate memory from pool
- *
- */
 #define QDMABUF_IOCTL_ALLOC		_IOWR(QDMABUF_IOC_MAGIC, 0x0, struct qdmabuf_alloc_args)
 #define QDMABUF_IOCTL_INFO		_IOWR(QDMABUF_IOC_MAGIC, 0x1, struct qdmabuf_info_args)
+#define QDMABUF_IOCTL_WQ		_IOWR(QDMABUF_IOC_MAGIC, 0x2, struct qdmabuf_wq_args)
 
 #endif /* _UAPI_LINUX_QDMABUF_H */

@@ -126,8 +126,11 @@ static void qdmabuf_mod_exit(void)
 	pr_info("%s", version);
 
 	platform_driver_unregister(&qdmabuf_driver);
+	pr_info("%s", version);
 	platform_device_unregister(qdmabuf_device);
-	platform_device_put(qdmabuf_device);
+	pr_info("%s", version);
+	// platform_device_put(qdmabuf_device);
+	// pr_info("%s", version);
 	qdmabuf_device = NULL;
 }
 

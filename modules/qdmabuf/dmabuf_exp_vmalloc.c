@@ -131,7 +131,11 @@ static struct sg_table * exp_vmalloc_map_dma_buf(struct dma_buf_attachment *db_a
 	/* stealing dmabuf mutex to serialize map/unmap operations */
 	struct mutex *lock = &db_attach->dmabuf->lock;
 	struct sg_table *sgt;
+
+#if LINUX_VERSION_CODE <= KERNEL_VERSION(5,9,0)
+#else
 	int err;
+#endif
 
 	pr_info("db_attach=%p\n", db_attach);
 

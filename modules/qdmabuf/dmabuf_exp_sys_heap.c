@@ -8,6 +8,8 @@
 #include <linux/slab.h>
 #include <linux/highmem.h>
 
+#if LINUX_VERSION_CODE <= KERNEL_VERSION(5,9,0)
+#else
 struct exp_sys_heap_buffer {
 	struct list_head attachments;
 	struct mutex lock;
@@ -413,3 +415,4 @@ int qdmabuf_dmabuf_alloc_sys_heap(struct device* device, int len, int fd_flags, 
 
 	return ret;
 }
+#endif

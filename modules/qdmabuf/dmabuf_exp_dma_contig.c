@@ -137,7 +137,11 @@ static struct sg_table * exp_dma_contig_map_dma_buf(struct dma_buf_attachment *d
 	enum dma_data_direction dma_dir) {
 	struct exp_dma_contig_attachment *attach = db_attach->priv;
 	struct sg_table *sgt;
+
+#if LINUX_VERSION_CODE <= KERNEL_VERSION(5,9,0)
+#else
 	int err;
+#endif
 
 	pr_info("db_attach=%p\n", db_attach);
 
