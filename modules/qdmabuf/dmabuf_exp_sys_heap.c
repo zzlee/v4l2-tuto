@@ -215,7 +215,11 @@ static void *exp_sys_heap_do_vmap(struct exp_sys_heap_buffer *buffer)
 	return vaddr;
 }
 
+#if LINUX_VERSION_CODE <= KERNEL_VERSION(5,10,120)
+static void * exp_sys_heap_vmap(struct dma_buf *dmabuf)
+#else
 static int exp_sys_heap_vmap(struct dma_buf *dmabuf, struct dma_buf_map *map)
+#endif
 {
 	struct exp_sys_heap_buffer *buffer = dmabuf->priv;
 	void *vaddr;
@@ -224,7 +228,14 @@ static int exp_sys_heap_vmap(struct dma_buf *dmabuf, struct dma_buf_map *map)
 	mutex_lock(&buffer->lock);
 	if (buffer->vmap_cnt) {
 		buffer->vmap_cnt++;
+
+#if LINUX_VERSION_CODE <= KERNEL_VERSION(5,10,120)
+		vaddr = buffer->vaddr;
+#else
 		dma_buf_map_set_vaddr(map, buffer->vaddr);
+
+		ret = 0;
+#endif
 		goto out;
 	}
 
@@ -236,14 +247,28 @@ static int exp_sys_heap_vmap(struct dma_buf *dmabuf, struct dma_buf_map *map)
 
 	buffer->vaddr = vaddr;
 	buffer->vmap_cnt++;
+
+#if LINUX_VERSION_CODE > KERNEL_VERSION(5,10,120)
 	dma_buf_map_set_vaddr(map, buffer->vaddr);
+
+	ret = 0;
+#endif
+
 out:
 	mutex_unlock(&buffer->lock);
 
+#if LINUX_VERSION_CODE <= KERNEL_VERSION(5,10,120)
+	return vaddr;
+#else
 	return ret;
+#endif
 }
 
+#if LINUX_VERSION_CODE <= KERNEL_VERSION(5,10,120)
+static void exp_sys_heap_vunmap(struct dma_buf *dmabuf, void * vaddr)
+#else
 static void exp_sys_heap_vunmap(struct dma_buf *dmabuf, struct dma_buf_map *map)
+#endif
 {
 	struct exp_sys_heap_buffer *buffer = dmabuf->priv;
 
@@ -253,7 +278,10 @@ static void exp_sys_heap_vunmap(struct dma_buf *dmabuf, struct dma_buf_map *map)
 		buffer->vaddr = NULL;
 	}
 	mutex_unlock(&buffer->lock);
+
+#if LINUX_VERSION_CODE > KERNEL_VERSION(5,10,120)
 	dma_buf_map_clear(map);
+#endif
 }
 
 static int exp_sys_heap_mmap(struct dma_buf *dmabuf, struct vm_area_struct *vma)

@@ -166,7 +166,7 @@ static struct sg_table * exp_dma_sg_map_dma_buf(struct dma_buf_attachment *db_at
 
 	/* release any previous cache */
 	if (attach->dma_dir != DMA_NONE) {
-#if LINUX_VERSION_CODE <= KERNEL_VERSION(5,9,0)
+#if LINUX_VERSION_CODE <= KERNEL_VERSION(5,10,120)
 		dma_unmap_sg_attrs(db_attach->dev, sgt->sgl, sgt->orig_nents,
 				   attach->dma_dir, DMA_ATTR_SKIP_CPU_SYNC);
 #else
@@ -175,7 +175,7 @@ static struct sg_table * exp_dma_sg_map_dma_buf(struct dma_buf_attachment *db_at
 		attach->dma_dir = DMA_NONE;
 	}
 
-#if LINUX_VERSION_CODE <= KERNEL_VERSION(5,9,0)
+#if LINUX_VERSION_CODE <= KERNEL_VERSION(5,10,120)
 	sgt->nents = dma_map_sg_attrs(db_attach->dev, sgt->sgl, sgt->orig_nents, dma_dir, DMA_ATTR_SKIP_CPU_SYNC);
 	if (!sgt->nents) {
 		pr_err("dma_map_sg_attrs() failed, sgt->nents=%d\n", (int)sgt->nents);
@@ -236,7 +236,7 @@ static int exp_dma_sg_end_cpu_access(struct dma_buf *dbuf,
 	return 0;
 }
 
-#if LINUX_VERSION_CODE <= KERNEL_VERSION(5,9,0)
+#if LINUX_VERSION_CODE <= KERNEL_VERSION(5,10,120)
 static void * exp_dma_sg_vmap(struct dma_buf *dbuf)
 #else
 static int exp_dma_sg_vmap(struct dma_buf *dbuf, struct dma_buf_map *map)
@@ -246,7 +246,7 @@ static int exp_dma_sg_vmap(struct dma_buf *dbuf, struct dma_buf_map *map)
 
 	pr_info("buf=%p\n", buf);
 
-#if LINUX_VERSION_CODE <= KERNEL_VERSION(5,9,0)
+#if LINUX_VERSION_CODE <= KERNEL_VERSION(5,10,120)
 	return buf->vaddr;
 #else
 	dma_buf_map_set_vaddr(map, buf->vaddr);
@@ -385,7 +385,7 @@ int qdmabuf_dmabuf_alloc_dma_sg(struct device* device, int len, int fd_flags, in
 		goto err2;
 	}
 
-	ret = exp_dma_sg_alloc_compacted(buf, GFP_KERNEL | GFP_DMA);
+	ret = exp_dma_sg_alloc_compacted(buf, GFP_DMA);
 	if (ret) {
 		pr_err("exp_dma_sg_alloc_compacted() failed, err=%d\n", ret);
 		goto err3;
@@ -402,7 +402,7 @@ int qdmabuf_dmabuf_alloc_dma_sg(struct device* device, int len, int fd_flags, in
 	 * No need to sync to the device, this will happen later when the
 	 * prepare() memop is called.
 	 */
-#if LINUX_VERSION_CODE <= KERNEL_VERSION(5,9,0)
+#if LINUX_VERSION_CODE <= KERNEL_VERSION(5,10,120)
 	sgt->nents = dma_map_sg_attrs(buf->dev, sgt->sgl, sgt->orig_nents,
 				      buf->dma_dir, DMA_ATTR_SKIP_CPU_SYNC);
 	if (sgt->nents <= 0) {

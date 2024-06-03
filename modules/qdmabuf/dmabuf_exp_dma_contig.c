@@ -156,7 +156,7 @@ static struct sg_table * exp_dma_contig_map_dma_buf(struct dma_buf_attachment *d
 
 	/* release any previous cache */
 	if (attach->dma_dir != DMA_NONE) {
-#if LINUX_VERSION_CODE <= KERNEL_VERSION(5,9,0)
+#if LINUX_VERSION_CODE <= KERNEL_VERSION(5,10,120)
 		dma_unmap_sg_attrs(db_attach->dev, sgt->sgl, sgt->orig_nents,
 				   attach->dma_dir, DMA_ATTR_SKIP_CPU_SYNC);
 #else
@@ -165,7 +165,7 @@ static struct sg_table * exp_dma_contig_map_dma_buf(struct dma_buf_attachment *d
 		attach->dma_dir = DMA_NONE;
 	}
 
-#if LINUX_VERSION_CODE <= KERNEL_VERSION(5,9,0)
+#if LINUX_VERSION_CODE <= KERNEL_VERSION(5,10,120)
 	sgt->nents = dma_map_sg_attrs(db_attach->dev, sgt->sgl, sgt->orig_nents, dma_dir, DMA_ATTR_SKIP_CPU_SYNC);
 	if (!sgt->nents) {
 		pr_err("dma_map_sg_attrs() failed, sgt->nents=%d\n", (int)sgt->nents);
@@ -220,7 +220,7 @@ static int exp_dma_contig_end_cpu_access(struct dma_buf *dbuf,
 	return 0;
 }
 
-#if LINUX_VERSION_CODE <= KERNEL_VERSION(5,9,0)
+#if LINUX_VERSION_CODE <= KERNEL_VERSION(5,10,120)
 static void * exp_dma_contig_vmap(struct dma_buf *dbuf)
 #else
 static int exp_dma_contig_vmap(struct dma_buf *dbuf, struct dma_buf_map *map)
@@ -230,7 +230,7 @@ static int exp_dma_contig_vmap(struct dma_buf *dbuf, struct dma_buf_map *map)
 
 	pr_info("buf=%p\n", buf);
 
-#if LINUX_VERSION_CODE <= KERNEL_VERSION(5,9,0)
+#if LINUX_VERSION_CODE <= KERNEL_VERSION(5,10,120)
 	return buf->vaddr;
 #else
 	dma_buf_map_set_vaddr(map, buf->vaddr);

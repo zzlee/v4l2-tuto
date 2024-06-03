@@ -1,5 +1,6 @@
 #define pr_fmt(fmt)     "[" KBUILD_MODNAME "]%s(#%d): " fmt, __func__, __LINE__
 
+#include <linux/version.h>
 #include <linux/device.h>
 #include <linux/module.h>
 #include <linux/fs.h>
@@ -29,7 +30,11 @@ static struct file_operations qdmabuf_fops = {
 };
 
 int qdmabuf_cdev_init(void) {
+#if LINUX_VERSION_CODE <= KERNEL_VERSION(6,4,0)
 	g_qdmabuf_class = class_create(THIS_MODULE, QDMABUF_NODE_NAME);
+#else
+	g_qdmabuf_class = class_create(QDMABUF_NODE_NAME);
+#endif
 	if (IS_ERR(g_qdmabuf_class)) {
 		pr_err("class_create() failed, g_qdmabuf_class=%p\n", g_qdmabuf_class);
 
