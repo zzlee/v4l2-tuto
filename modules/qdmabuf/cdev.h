@@ -7,6 +7,9 @@ struct qdmabuf_cdev {
 	dev_t cdevno;
 	struct cdev cdev;
 	struct device* device; // platform device
+
+	wait_queue_head_t wq_head;
+	__u32 wq_event;
 };
 
 int qdmabuf_cdev_init(void);

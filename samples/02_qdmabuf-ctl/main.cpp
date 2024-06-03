@@ -183,7 +183,7 @@ namespace __02_qdmabuf_ctl__ {
 				break;
 #endif
 
-#if 1
+#if 0
 			for(int i = 0;i < 4;i++) {
 				qdmabuf_alloc_args args;
 				args.len = 1 * 1024 * getpagesize();
@@ -208,6 +208,7 @@ namespace __02_qdmabuf_ctl__ {
 			if(err < 0)
 				break;
 
+#if 0
 			for(int i = 0;i < 4;i++) {
 				qdmabuf_info_args args;
 				args.fd = fd_dma_buf_sys_heap[i];
@@ -221,6 +222,7 @@ namespace __02_qdmabuf_ctl__ {
 
 			if(err < 0)
 				break;
+#endif
 #endif
 
 #if 0
@@ -277,6 +279,45 @@ namespace __02_qdmabuf_ctl__ {
 				break;
 #endif // BUILD_WITH_NVBUF
 #endif
+
+#if 1
+			{
+				qdmabuf_wq_args args;
+
+				args.type = 0;
+				args.value = (__u32)-1;
+				LOGD("args={.type=%d, .value=%d}", (int)args.type, (int)args.value);
+
+				err = ioctl(fd_qdmabuf, QDMABUF_IOCTL_WQ, &args);
+				if(err) {
+					err = errno;
+					LOGE("%s(%d): ioctl(QDMABUF_IOCTL_WQ) failed, err=%d", __FUNCTION__, __LINE__, err);
+					break;
+				}
+
+				LOGD("args={.type=%d, .value=%d}", (int)args.type, (int)args.value);
+			}
+#endif
+
+#if 0
+			{
+				qdmabuf_wq_args args;
+
+				args.type = 1;
+				args.value = 123;
+				LOGD("args={.type=%d, .value=%d}", (int)args.type, (int)args.value);
+
+				err = ioctl(fd_qdmabuf, QDMABUF_IOCTL_WQ, &args);
+				if(err) {
+					err = errno;
+					LOGE("%s(%d): ioctl(QDMABUF_IOCTL_WQ) failed, err=%d", __FUNCTION__, __LINE__, err);
+					break;
+				}
+
+				LOGD("args={.type=%d, .value=%d}", (int)args.type, (int)args.value);
+			}
+#endif
+
 			ZzUtils::TestLoop([&]() -> int {
 				return 0;
 			}, 1000000LL, 60LL);
