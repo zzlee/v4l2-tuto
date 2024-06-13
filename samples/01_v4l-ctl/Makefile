@@ -6,6 +6,9 @@ SRCS := \
 	main.cpp \
 	$(wildcard $(COMMON_DIR)/*.cpp)
 
+LDFLAGS += \
+-lv4l2
+
 OBJS := $(SRCS:.cpp=.o)
 
 all: $(APP)

@@ -13,6 +13,7 @@
 #define ZZ_CONCAT_I(N, S) N ## S
 #define ZZ_CONCAT(N, S) ZZ_CONCAT_I(N, S)
 #define ZZ_GUARD_NAME ZZ_CONCAT(__GUARD, __LINE__)
+#define ZZ_ALIGN(x, a) (((x)+(a)-1)&~((a)-1))
 
 namespace ZzUtils {
 	struct FreeStack : protected std::stack<std::function<void ()> > {
@@ -32,7 +33,7 @@ namespace ZzUtils {
 		void Flush();
 	};
 
-	void TestLoop(std::function<int ()> idle, int64_t dur_num = 1000000LL, int64_t dur_den = 60LL);
+	void TestLoop(std::function<int (int)> idle, int64_t dur_num = 1000000LL, int64_t dur_den = 60LL);
 }
 
 #endif // __ZZ_UTILS_H__

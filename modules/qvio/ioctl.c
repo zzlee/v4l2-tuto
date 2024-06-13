@@ -45,31 +45,61 @@ int qvio_ioctl_enum_fmt(struct file *file,
 int qvio_ioctl_g_fmt(struct file *file,
 					   void *fh,
 					   struct v4l2_format *format) {
+	int err;
 	struct qvio_device* device = video_drvdata(file);
 
 	pr_info("\n");
 
-	return -EINVAL;
+	err = qvio_device_g_fmt(device, format);
+	if(err) {
+		pr_err("qvio_device_g_fmt() failed, err=%d", err);
+		goto err0;
+	}
+
+	return err;
+
+err0:
+	return err;
 }
 
 int qvio_ioctl_s_fmt(struct file *file,
 					   void *fh,
 					   struct v4l2_format *format) {
+	int err;
 	struct qvio_device* device = video_drvdata(file);
 
 	pr_info("\n");
 
-	return -EINVAL;
+	err = qvio_device_s_fmt(device, format);
+	if(err) {
+		pr_err("qvio_device_s_fmt() failed, err=%d", err);
+		goto err0;
+	}
+
+	return err;
+
+err0:
+	return err;
 }
 
 int qvio_ioctl_try_fmt(struct file *file,
 						 void *fh,
 						 struct v4l2_format *format) {
+	int err;
 	struct qvio_device* device = video_drvdata(file);
 
 	pr_info("\n");
 
-	return -EINVAL;
+	err = qvio_device_try_fmt(device, format);
+	if(err) {
+		pr_err("qvio_device_try_fmt() failed, err=%d", err);
+		goto err0;
+	}
+
+	return err;
+
+err0:
+	return err;
 }
 
 int qvio_ioctl_enum_input(struct file *file,

@@ -3,6 +3,7 @@
 #include "device.h"
 #include "ioctl.h"
 
+#include <linux/platform_device.h>
 #include <media/videobuf2-v4l2.h>
 #include <media/v4l2-device.h>
 #include <media/v4l2-ioctl.h>
@@ -15,11 +16,80 @@ struct qvio_device {
 	struct video_device *vdev;
 	int videonr;
     enum v4l2_buf_type buffer_type;
+ 	struct v4l2_format current_format;
 };
+
+static struct qvio_device* g_dev;
+
+static int qvio_probe(struct platform_device *pdev) {
+	int err = 0;
+
+	pr_info("\n");
+
+	g_dev = qvio_device_new();
+	if(! g_dev) {
+		pr_err("qvio_device_new() failed\n");
+		err = -ENOMEM;
+		goto err0;
+	}
+
+	err = qvio_device_start(g_dev);
+	if(err) {
+		pr_err("qvio_device_start() failed, err=%d\n", err);
+		goto err1;
+	}
+
+	return err;
+
+err1:
+	qvio_device_put(g_dev);
+err0:
+	return err;
+}
+
+static int qvio_remove(struct platform_device *pdev) {
+	int err = 0;
+
+	pr_info("\n");
+
+	qvio_device_stop(g_dev);
+	qvio_device_put(g_dev);
+
+	return err;
+}
+
+static struct platform_driver qvio_driver = {
+	.driver = {
+		.name = QVIO_DRIVER_NAME
+	},
+	.probe  = qvio_probe,
+	.remove = qvio_remove,
+};
+
+int qvio_device_register(void) {
+	int err;
+
+	err = platform_driver_register(&qvio_driver);
+	if(err) {
+		pr_err("platform_driver_register() failed\n");
+		goto err0;
+	}
+
+	return err;
+
+err0:
+	return err;
+}
+
+void qvio_device_unregister(void) {
+	platform_driver_unregister(&qvio_driver);
+}
 
 static void qvio_device_free(struct kref *ref)
 {
 	struct qvio_device* self = container_of(ref, struct qvio_device, ref);
+
+	pr_info("\n");
 
 	qvio_queue_put(self->queue);
 	kfree(self);
@@ -141,4 +211,43 @@ void qvio_device_stop(struct qvio_device* self) {
 	self->vdev = NULL;
 
 	v4l2_device_unregister(&self->v4l2_dev);
+}
+
+int qvio_device_s_fmt(struct qvio_device* self, struct v4l2_format *format) {
+	int err;
+
+	pr_info("\n");
+
+	memcpy(&self->current_format, format, sizeof(struct v4l2_format));
+	err = qvio_queue_s_fmt(self->queue, format);
+	if(err) {
+		pr_err("qvio_queue_s_fmt() failed, err=%d", err);
+		goto err0;
+	}
+
+	return err;
+
+err0:
+	return err;
+}
+
+int qvio_device_g_fmt(struct qvio_device* self, struct v4l2_format *format) {
+	int err;
+
+	pr_info("\n");
+
+	memcpy(format, &self->current_format, sizeof(struct v4l2_format));
+	err = 0;
+
+	return err;
+}
+
+int qvio_device_try_fmt(struct qvio_device* self, struct v4l2_format *format) {
+	int err;
+
+	pr_info("\n");
+
+	err = 0;
+
+	return err;
 }

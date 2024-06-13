@@ -1,12 +1,14 @@
 #include "ZzLog.h"
 #include "ZzUtils.h"
 
+#include <stdio.h>
+#include <string.h>
+
 #include <errno.h>
 #include <fcntl.h>
 #include <unistd.h>
 #include <sys/ioctl.h>
-#include <stdio.h>
-#include <string.h>
+#include <sys/mman.h>
 
 #if BUILD_WITH_NVBUF
 #include <nvbufsurface.h>
@@ -46,6 +48,8 @@ namespace __02_qdmabuf_ctl__ {
 		int fd_dma_buf_vmalloc[4];
 		int fd_dma_buf_sys_heap[4];
 
+		void* dma_buf_mmap_addr[4];
+
 #if BUILD_WITH_NVBUF
 		NvBufSurface* pNVBuf_surface[4];
 		int fd_dma_buf_nvbuf[4];
@@ -62,10 +66,10 @@ namespace __02_qdmabuf_ctl__ {
 				close(fd_qdmabuf);
 			};
 
-#if 0
+#if 1
 			for(int i = 0;i < 4;i++) {
 				qdmabuf_alloc_args args;
-				args.len = 4 * 1024 * 1024;
+				args.len = 4096 * 2160 * 2;
 				args.type = QDMABUF_TYPE_DMA_CONTIG;
 				args.fd_flags = O_RDWR | O_CLOEXEC;
 				args.dma_dir = QDMABUF_DMA_DIR_BIDIRECTIONAL;
@@ -87,6 +91,7 @@ namespace __02_qdmabuf_ctl__ {
 			if(err < 0)
 				break;
 
+#if 0
 			for(int i = 0;i < 4;i++) {
 				qdmabuf_info_args args;
 				args.fd = fd_dma_buf_dma_contig[i];
@@ -95,6 +100,36 @@ namespace __02_qdmabuf_ctl__ {
 					err = errno;
 					LOGE("%s(%d): ioctl(QDMABUF_IOCTL_INFO) failed, err=%d", __FUNCTION__, __LINE__, err);
 					break;
+				}
+			}
+
+			if(err < 0)
+				break;
+#endif
+
+			for(int i = 0;i < 4;i++) {
+				int dma_buf_size = 4096 * 2160 * 2;
+
+				dma_buf_mmap_addr[i] = mmap(NULL, dma_buf_size, PROT_READ | PROT_WRITE, MAP_SHARED, fd_dma_buf_dma_contig[i], 0);
+				if(dma_buf_mmap_addr[i] == MAP_FAILED) {
+					err = errno;
+					LOGE("%s(%d): mmap() failed, err=%d", __FUNCTION__, __LINE__, err);
+					break;
+				}
+
+				LOGD("dma_buf_mmap_addr[%d]=%p", i, dma_buf_mmap_addr[i]);
+			}
+
+			if(err < 0)
+				break;
+
+			for(int i = 0;i < 4;i++) {
+				int dma_buf_size = 4096 * 2160 * 2;
+
+				err = munmap(dma_buf_mmap_addr[i], dma_buf_size);
+				if(err) {
+					err = errno;
+					LOGE("%s(%d): munmap() failed, err=%d", __FUNCTION__, __LINE__, err);
 				}
 			}
 
@@ -176,6 +211,32 @@ namespace __02_qdmabuf_ctl__ {
 					err = errno;
 					LOGE("%s(%d): ioctl(QDMABUF_IOCTL_INFO) failed, err=%d", __FUNCTION__, __LINE__, err);
 					break;
+				}
+			}
+
+			for(int i = 0;i < 4;i++) {
+				int dma_buf_size = 16 * 1024 * 1024;
+
+				dma_buf_mmap_addr[i] = mmap(NULL, dma_buf_size, PROT_READ | PROT_WRITE, MAP_SHARED, fd_dma_buf_vmalloc[i], 0);
+				if(dma_buf_mmap_addr[i] == MAP_FAILED) {
+					err = errno;
+					LOGE("%s(%d): mmap() failed, err=%d", __FUNCTION__, __LINE__, err);
+					break;
+				}
+
+				LOGD("dma_buf_mmap_addr[%d]=%p", i, dma_buf_mmap_addr[i]);
+			}
+
+			if(err < 0)
+				break;
+
+			for(int i = 0;i < 4;i++) {
+				int dma_buf_size = 16 * 1024 * 1024;
+
+				err = munmap(dma_buf_mmap_addr[i], dma_buf_size);
+				if(err) {
+					err = errno;
+					LOGE("%s(%d): munmap() failed, err=%d", __FUNCTION__, __LINE__, err);
 				}
 			}
 
@@ -280,7 +341,7 @@ namespace __02_qdmabuf_ctl__ {
 #endif // BUILD_WITH_NVBUF
 #endif
 
-#if 1
+#if 0
 			{
 				qdmabuf_wq_args args;
 
@@ -318,7 +379,7 @@ namespace __02_qdmabuf_ctl__ {
 			}
 #endif
 
-			ZzUtils::TestLoop([&]() -> int {
+			ZzUtils::TestLoop([&](int ch) -> int {
 				return 0;
 			}, 1000000LL, 60LL);
 		}

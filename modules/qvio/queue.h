@@ -14,5 +14,7 @@ int qvio_queue_start(struct qvio_queue* self, enum v4l2_buf_type type);
 void qvio_queue_stop(struct qvio_queue* self);
 
 struct vb2_queue* qvio_queue_get_vb2_queue(struct qvio_queue* self);
+int qvio_queue_s_fmt(struct qvio_queue* self, struct v4l2_format *format);
+int qvio_queue_g_fmt(struct qvio_queue* self, struct v4l2_format *format);
 
 #endif // __QVIO_QUEUE_H__

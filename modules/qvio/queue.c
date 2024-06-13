@@ -5,15 +5,18 @@
 #include <media/videobuf2-v4l2.h>
 #include <media/videobuf2-vmalloc.h>
 
+#define ZZ_ALIGN(x, a) (((x)+(a)-1)&~((a)-1))
+
 struct qvio_queue {
 	struct kref ref;
 	struct vb2_queue queue;
 	struct mutex queue_mutex;
+	struct v4l2_format current_format;
 };
 
 struct qvio_queue_buffer {
-    struct vb2_v4l2_buffer vb;
-    struct list_head list;
+	struct vb2_v4l2_buffer vb;
+	struct list_head list;
 };
 
 static void qvio_queue_free(struct kref *ref)
@@ -48,19 +51,55 @@ int qvio_queue_setup(struct vb2_queue *queue,
 	unsigned int *num_planes,
 	unsigned int sizes[],
 	struct device *alloc_devs[]) {
-	pr_info("\n");
+	int err = 0;
+	struct qvio_queue* self = container_of(queue, struct qvio_queue, queue);
 
-	return -EINVAL;
+	pr_info("+param %d %d\n", *num_buffers, *num_planes);
+
+	if(*num_buffers < 1)
+		*num_buffers = 1;
+
+	if(self->current_format.type == V4L2_BUF_TYPE_VIDEO_CAPTURE_MPLANE) {
+		if(self->current_format.fmt.pix_mp.pixelformat == V4L2_PIX_FMT_NV12) {
+			*num_planes = 2;
+			sizes[0] = ZZ_ALIGN(self->current_format.fmt.pix_mp.width, 0x1000) * self->current_format.fmt.pix_mp.height;
+			sizes[1] = ZZ_ALIGN(self->current_format.fmt.pix_mp.width, 0x1000) * self->current_format.fmt.pix_mp.height / 2;
+		} else {
+			pr_err("invalid value, self->current_format.fmt.pix_mp.pixelformat=%d", (int)self->current_format.fmt.pix_mp.pixelformat);
+			err = -EINVAL;
+			goto err0;
+		}
+
+	} else {
+		pr_err("invalid value, self->current_format.type=%d", (int)self->current_format.type);
+		err = -EINVAL;
+		goto err0;
+	}
+
+	pr_info("-param %d %d [%d %d]\n", *num_buffers, *num_planes, sizes[0], sizes[1]);
+
+	return err;
+
+err0:
+	return err;
 }
 
 int qvio_buffer_prepare(struct vb2_buffer *buffer) {
-	pr_info("\n");
+	int err;
+	struct qvio_queue* self = vb2_get_drv_priv(buffer->vb2_queue);
+	struct vb2_v4l2_buffer *vbuf = to_vb2_v4l2_buffer(buffer);
 
-	return -EINVAL;
+	pr_info("param: %p %p\n", self, vbuf);
+	err = 0;
+
+	return err;
 }
 
 void qvio_buffer_queue(struct vb2_buffer *buffer) {
-	pr_info("\n");
+	struct qvio_queue* self = vb2_get_drv_priv(buffer->vb2_queue);
+	struct vb2_v4l2_buffer *vbuf = to_vb2_v4l2_buffer(buffer);
+
+	pr_info("param: %p %p\n", self, vbuf);
 }
 
 int qvio_start_streaming(struct vb2_queue *queue, unsigned int count) {
@@ -87,7 +126,7 @@ int qvio_queue_start(struct qvio_queue* self, enum v4l2_buf_type type) {
 	pr_info("\n");
 
 	self->queue.type = type;
-	self->queue.io_modes = VB2_READ | VB2_MMAP;
+	self->queue.io_modes = VB2_READ | VB2_MMAP | VB2_USERPTR | VB2_DMABUF;
 	self->queue.drv_priv = self;
 	self->queue.lock = &self->queue_mutex;
 	self->queue.buf_struct_size = sizeof(struct qvio_queue_buffer);
@@ -105,4 +144,26 @@ void qvio_queue_stop(struct qvio_queue* self) {
 
 struct vb2_queue* qvio_queue_get_vb2_queue(struct qvio_queue* self) {
 	return &self->queue;
+}
+
+int qvio_queue_s_fmt(struct qvio_queue* self, struct v4l2_format *format) {
+	int err;
+
+	pr_info("\n");
+
+	memcpy(&self->current_format, format, sizeof(struct v4l2_format));
+	err = 0;
+
+	return err;
+}
+
+int qvio_queue_g_fmt(struct qvio_queue* self, struct v4l2_format *format) {
+	int err;
+
+	pr_info("\n");
+
+	memcpy(format, &self->current_format, sizeof(struct v4l2_format));
+	err = 0;
+
+	return err;
 }

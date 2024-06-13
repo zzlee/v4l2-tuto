@@ -28,7 +28,7 @@ namespace ZzUtils {
 		}
 	}
 
-	void TestLoop(std::function<int ()> idle, int64_t dur_num, int64_t dur_den) {
+	void TestLoop(std::function<int (int)> idle, int64_t dur_num, int64_t dur_den) {
 		int err;
 
 		int fd_stdin = 0; // stdin
@@ -70,10 +70,15 @@ namespace ZzUtils {
 
 				if(ch == 'q')
 					break;
+
+				err = idle(ch);
+				if(err) {
+					break;
+				}
 			}
 
 			if(err == 0) {
-				err = idle();
+				err = idle(-1);
 				if(err) {
 					break;
 				}

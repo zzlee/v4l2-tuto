@@ -305,16 +305,16 @@ static long qdmabuf_ioctl_wq(struct file * filp, unsigned long arg) {
 
 	switch(args.type) {
 	case 0: // consumer
-		last_wq_event = g_qdmabuf_cdev->wq_event;
-		err = wait_event_interruptible(g_qdmabuf_cdev->wq_head, (last_wq_event != g_qdmabuf_cdev->wq_event));
+		last_wq_event = qdmabuf_cdev->wq_event;
+		err = wait_event_interruptible(qdmabuf_cdev->wq_head, (last_wq_event != qdmabuf_cdev->wq_event));
 		if(err) {
 			pr_err("wait_event_interruptible() failed, err=%d\n", err);
 			ret = err;
 			break;
 		}
 
-		pr_info("g_qdmabuf_cdev->wq_event=%d\n", (int)g_qdmabuf_cdev->wq_event);
-		args.value = g_qdmabuf_cdev->wq_event;
+		pr_info("qdmabuf_cdev->wq_event=%d\n", (int)qdmabuf_cdev->wq_event);
+		args.value = qdmabuf_cdev->wq_event;
 
 		ret = copy_to_user((void __user *)arg, &args, sizeof(args));
 		if (ret != 0) {
@@ -328,10 +328,10 @@ static long qdmabuf_ioctl_wq(struct file * filp, unsigned long arg) {
 		break;
 
 	case 1: // producer
-		g_qdmabuf_cdev->wq_event = args.value;
-		pr_info("g_qdmabuf_cdev->wq_event=%d\n", (int)g_qdmabuf_cdev->wq_event);
+		qdmabuf_cdev->wq_event = args.value;
+		pr_info("qdmabuf_cdev->wq_event=%d\n", (int)qdmabuf_cdev->wq_event);
 
-		wake_up_interruptible(&g_qdmabuf_cdev->wq_head);
+		wake_up_interruptible(&qdmabuf_cdev->wq_head);
 		ret = 0;
 		break;
 
