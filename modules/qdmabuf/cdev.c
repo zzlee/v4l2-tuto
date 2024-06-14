@@ -126,9 +126,11 @@ err0:
 }
 
 static int qdmabuf_file_open(struct inode *inode, struct file *filp) {
+	struct qdmabuf_cdev* qdmabuf_cdev = container_of(inode->i_cdev, struct qdmabuf_cdev, cdev);
+
 	pr_info("\n");
 
-	filp->private_data = g_qdmabuf_cdev;
+	filp->private_data = qdmabuf_cdev;
 	nonseekable_open(inode, filp);
 
 	return 0;

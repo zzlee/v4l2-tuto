@@ -193,6 +193,26 @@ int qvio_ioctl_enum_frameintervals(struct file *file,
 	return -EINVAL;
 }
 
+int qvio_ioctl_g_ctrl(struct file *file, void *fh, strruct v4l2_control *a) {
+	struct qvio_device* device = video_drvdata(file);
+	int err;
+
+	pr_info("\n");
+	err = 0;
+
+	return err;
+}
+
+int qvio_ioctl_s_ctrl(struct file *file, void *fh, struct v4l2_control *a) {
+	struct qvio_device* device = video_drvdata(file);
+	int err;
+
+	pr_info("\n");
+	err = 0;
+
+	return err;
+}
+
 const struct v4l2_ioctl_ops *qvio_ioctl_ops(void) {
 	static const struct v4l2_ioctl_ops ops = {
 		.vidioc_querycap               = qvio_ioctl_querycap           ,
@@ -232,6 +252,8 @@ const struct v4l2_ioctl_ops *qvio_ioctl_ops(void) {
 		.vidioc_enum_frameintervals    = qvio_ioctl_enum_frameintervals,
 		.vidioc_subscribe_event        = v4l2_ctrl_subscribe_event       ,
 		.vidioc_unsubscribe_event      = v4l2_event_unsubscribe          ,
+		.vidioc_g_ctrl                 = qvio_ioctl_g_ctrl,
+		.vidioc_s_ctrl                 = qvio_ioctl_s_ctrl,
 	};
 
 	return &ops;

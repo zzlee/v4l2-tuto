@@ -66,7 +66,7 @@ namespace __02_qdmabuf_ctl__ {
 				close(fd_qdmabuf);
 			};
 
-#if 1
+#if 0
 			for(int i = 0;i < 4;i++) {
 				qdmabuf_alloc_args args;
 				args.len = 4096 * 2160 * 2;
@@ -178,7 +178,7 @@ namespace __02_qdmabuf_ctl__ {
 				break;
 #endif
 
-#if 0
+#if 1
 			for(int i = 0;i < 4;i++) {
 				qdmabuf_alloc_args args;
 				args.len = 16 * 1024 * 1024;

@@ -14,35 +14,64 @@ struct qvio_device {
 	struct mutex device_mutex;
 	struct v4l2_device v4l2_dev;
 	struct video_device *vdev;
+	int vfl_dir;
 	int videonr;
     enum v4l2_buf_type buffer_type;
  	struct v4l2_format current_format;
 };
 
-static struct qvio_device* g_dev;
+static struct qvio_device* g_dev_rx;
+static struct qvio_device* g_dev_tx;
 
 static int qvio_probe(struct platform_device *pdev) {
 	int err = 0;
 
 	pr_info("\n");
 
-	g_dev = qvio_device_new();
-	if(! g_dev) {
+	g_dev_rx = qvio_device_new();
+	if(! g_dev_rx) {
 		pr_err("qvio_device_new() failed\n");
 		err = -ENOMEM;
 		goto err0;
 	}
 
-	err = qvio_device_start(g_dev);
+	g_dev_rx->vfl_dir = VFL_DIR_RX;
+	g_dev_rx->buffer_type = V4L2_BUF_TYPE_VIDEO_CAPTURE_MPLANE;
+    snprintf(g_dev_rx->v4l2_dev.name, V4L2_DEVICE_NAME_SIZE, "qvio-rx");
+	g_dev_rx->videonr = 0;
+
+	err = qvio_device_start(g_dev_rx);
 	if(err) {
 		pr_err("qvio_device_start() failed, err=%d\n", err);
 		goto err1;
 	}
 
+	g_dev_tx = qvio_device_new();
+	if(! g_dev_tx) {
+		pr_err("qvio_device_new() failed\n");
+		err = -ENOMEM;
+		goto err2;
+	}
+
+	g_dev_tx->vfl_dir = VFL_DIR_TX;
+	g_dev_tx->buffer_type = V4L2_BUF_TYPE_VIDEO_OUTPUT_MPLANE;
+    snprintf(g_dev_tx->v4l2_dev.name, V4L2_DEVICE_NAME_SIZE, "qvio-tx");
+	g_dev_tx->videonr = 1;
+
+	err = qvio_device_start(g_dev_tx);
+	if(err) {
+		pr_err("qvio_device_start() failed, err=%d\n", err);
+		goto err3;
+	}
+
 	return err;
 
+err3:
+	qvio_device_put(g_dev_tx);
+err2:
+	qvio_device_stop(g_dev_rx);
 err1:
-	qvio_device_put(g_dev);
+	qvio_device_put(g_dev_rx);
 err0:
 	return err;
 }
@@ -52,8 +81,11 @@ static int qvio_remove(struct platform_device *pdev) {
 
 	pr_info("\n");
 
-	qvio_device_stop(g_dev);
-	qvio_device_put(g_dev);
+	qvio_device_stop(g_dev_rx);
+	qvio_device_put(g_dev_rx);
+
+	qvio_device_stop(g_dev_tx);
+	qvio_device_put(g_dev_tx);
 
 	return err;
 }
@@ -101,7 +133,7 @@ struct qvio_device* qvio_device_new(void) {
 	kref_init(&self->ref);
 	self->queue = qvio_queue_new();
 	mutex_init(&self->device_mutex);
-    snprintf(self->v4l2_dev.name, V4L2_DEVICE_NAME_SIZE, "qvid-%u", 0);
+	self->vfl_dir = VFL_DIR_RX;
 	self->videonr = -1;
 	self->buffer_type = V4L2_BUF_TYPE_VIDEO_CAPTURE_MPLANE;
 
@@ -162,10 +194,12 @@ int qvio_device_start(struct qvio_device* self) {
 		goto err3;
 	}
 
-	snprintf(self->vdev->name, 32, "%s", "qvio");
+	pr_info("param: %s %d %d\n", self->v4l2_dev.name, self->vfl_dir, self->videonr);
+
+	snprintf(self->vdev->name, 32, "%s", self->v4l2_dev.name);
 	self->vdev->v4l2_dev = &self->v4l2_dev;
 	self->vdev->vfl_type = VFL_TYPE_VIDEO;
-	self->vdev->vfl_dir = VFL_DIR_RX;
+	self->vdev->vfl_dir = self->vfl_dir;
 	self->vdev->minor = -1;
 	self->vdev->fops = &qvio_device_fops;
 	self->vdev->ioctl_ops = qvio_ioctl_ops();
@@ -185,8 +219,6 @@ int qvio_device_start(struct qvio_device* self) {
 
 	return 0;
 
-err5:
-	video_unregister_device(self->vdev);
 err4:
 	video_device_release(self->vdev);
 	self->vdev = NULL;
@@ -200,8 +232,6 @@ err0:
 }
 
 void qvio_device_stop(struct qvio_device* self) {
-	int ret;
-
 	pr_info("\n");
 
 	qvio_queue_stop(self->queue);
