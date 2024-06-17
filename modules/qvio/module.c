@@ -7,6 +7,7 @@
 #include "version.h"
 #include "module.h"
 #include "device.h"
+#include "cdev.h"
 
 #define DRV_MODULE_DESC		"QCAP Video I/O Driver"
 
@@ -25,32 +26,40 @@ static int __init qvio_mod_init(void)
 
 	pr_info("%s", version);
 
+	err = qvio_cdev_register();
+	if (err != 0) {
+		pr_err("qvio_cdev_register() failed, err=%d\n", err);
+		goto err0;
+	}
+
 	err = qvio_device_register();
 	if (err != 0) {
 		pr_err("qvio_device_register() failed, err=%d\n", err);
-		goto err0;
+		goto err1;
 	}
 
 	pdev_qvio = platform_device_alloc(QVIO_DRIVER_NAME, 0);
 	if (pdev_qvio == NULL) {
 		pr_err("platform_device_alloc() failed\n");
 		err = -ENOMEM;
-		goto err1;
+		goto err2;
 	}
 
 	err = platform_device_add(pdev_qvio);
 	if (err != 0) {
 		pr_err("platform_device_add() failed, err=%d\n", err);
 		err = -ENOMEM;
-		goto err2;
+		goto err3;
 	}
 
 	return err;
 
+err3:
+	platform_device_put(pdev_qvio);
 err2:
-	platform_device_del(pdev_qvio);
-err1:
 	qvio_device_unregister();
+err1:
+	qvio_cdev_unregister();
 err0:
 	return err;
 }
@@ -60,7 +69,9 @@ static void __exit qvio_mod_exit(void)
 	pr_info("%s", version);
 
 	platform_device_del(pdev_qvio);
+	platform_device_put(pdev_qvio);
 	qvio_device_unregister();
+	qvio_cdev_unregister();
 }
 
 module_init(qvio_mod_init);

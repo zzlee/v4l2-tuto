@@ -113,7 +113,7 @@ static int qdmabuf_mod_init(void)
 	return err;
 
 err2:
-	platform_device_del(pdev_qdmabuf);
+	platform_device_put(pdev_qdmabuf);
 err1:
 	platform_driver_unregister(&qdmabuf_driver);
 err0:
@@ -125,6 +125,7 @@ static void qdmabuf_mod_exit(void)
 	pr_info("%s", version);
 
 	platform_device_del(pdev_qdmabuf);
+	platform_device_put(pdev_qdmabuf);
 	platform_driver_unregister(&qdmabuf_driver);
 }
 

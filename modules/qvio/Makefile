@@ -7,7 +7,9 @@ qvio-objs := \
 	module.o \
 	queue.o \
 	device.o \
-	ioctl.o
+	ioctl.o \
+	cdev.o \
+	user_job.o
 
 ccflags-y += \
 -DQVIO_MODULE_VERSION=\"$(MODULE_VERSION)\"

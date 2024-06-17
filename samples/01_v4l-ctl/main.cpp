@@ -15,6 +15,8 @@
 #include <linux/version.h>
 #include <vector>
 
+#include "qvio.h"
+
 ZZ_INIT_LOG("01_v4l-ctl")
 
 namespace __01_v4l_ctl__ {
@@ -25,6 +27,7 @@ namespace __01_v4l_ctl__ {
 
 		ZzUtils::FreeStack oFreeStack;
 		int nVidFd;
+		int nVidCtrlFd;
 		int nMemory;
 		int nBufType;
 		int nPixelFormat;
@@ -62,6 +65,9 @@ namespace __01_v4l_ctl__ {
 		void VidStreamOn();
 		void VidStreamOff();
 		void VidQbufs();
+		void VidWaitForBuffer();
+		void VidBufDone();
+		void VidWaitForUserJob();
 	};
 
 	App::App(int argc, char **argv) : argc(argc), argv(argv) {
@@ -79,6 +85,7 @@ namespace __01_v4l_ctl__ {
 
 		switch(1) { case 1:
 			nVidFd = -1;
+			nVidCtrlFd = -1;
 			nMemory = V4L2_MEMORY_MMAP;
 			nBufType = V4L2_BUF_TYPE_VIDEO_CAPTURE_MPLANE;
 			nPixelFormat = V4L2_PIX_FMT_NV12;
@@ -146,6 +153,21 @@ namespace __01_v4l_ctl__ {
 				case '0':
 					VidQbufs();
 					break;
+
+				case 'a':
+				case 'A':
+					VidWaitForBuffer();
+					break;
+
+				case 'b':
+				case 'B':
+					VidBufDone();
+					break;
+
+				case 'c':
+				case 'C':
+					VidWaitForUserJob();
+					break;
 				}
 
 				return err;
@@ -173,7 +195,7 @@ namespace __01_v4l_ctl__ {
 			nVidFd = open("/dev/video0", O_RDWR | O_NONBLOCK);
 			if(nVidFd == -1) {
 				err = errno;
-				LOGE("%s(%d): open() failed, __FUNCTION__, __LINE__, err");
+				LOGE("%s(%d): open() failed, err=%d", __FUNCTION__, __LINE__, err);
 				break;
 			}
 			oFreeStack += [&]() {
@@ -189,6 +211,25 @@ namespace __01_v4l_ctl__ {
 
 			LOGD("nVidFd=%d", nVidFd);
 			nBufType = V4L2_BUF_TYPE_VIDEO_CAPTURE_MPLANE;
+
+			nVidCtrlFd = open("/dev/qvio0", O_RDWR);
+			if(nVidCtrlFd == -1) {
+				err = errno;
+				LOGE("%s(%d): open() failed, err=%d", __FUNCTION__, __LINE__, err);
+				break;
+			}
+			oFreeStack += [&]() {
+				int err;
+
+				err = close(nVidCtrlFd);
+				if(err) {
+					err = errno;
+					LOGE("%s(%d): close() failed, err=%d", __FUNCTION__, __LINE__, err);
+				}
+				nVidCtrlFd = -1;
+			};
+
+			LOGD("nVidCtrlFd=%d", nVidCtrlFd);
 		}
 	}
 
@@ -206,7 +247,7 @@ namespace __01_v4l_ctl__ {
 			nVidFd = open("/dev/video1", O_RDWR | O_NONBLOCK);
 			if(nVidFd == -1) {
 				err = errno;
-				LOGE("%s(%d): open() failed, __FUNCTION__, __LINE__, err");
+				LOGE("%s(%d): open() failed, err=%d", __FUNCTION__, __LINE__, err);
 				break;
 			}
 			oFreeStack += [&]() {
@@ -222,6 +263,25 @@ namespace __01_v4l_ctl__ {
 
 			LOGD("nVidFd=%d", nVidFd);
 			nBufType = V4L2_BUF_TYPE_VIDEO_OUTPUT_MPLANE;
+
+			nVidCtrlFd = open("/dev/qvio1", O_RDWR);
+			if(nVidCtrlFd == -1) {
+				err = errno;
+				LOGE("%s(%d): open() failed, err=%d", __FUNCTION__, __LINE__, err);
+				break;
+			}
+			oFreeStack += [&]() {
+				int err;
+
+				err = close(nVidCtrlFd);
+				if(err) {
+					err = errno;
+					LOGE("%s(%d): close() failed, err=%d", __FUNCTION__, __LINE__, err);
+				}
+				nVidCtrlFd = -1;
+			};
+
+			LOGD("nVidCtrlFd=%d", nVidCtrlFd);
 		}
 	}
 
@@ -547,6 +607,147 @@ namespace __01_v4l_ctl__ {
 					LOGE("%s(%d): ioctl(VIDIOC_QBUF) failed, err=%d", __FUNCTION__, __LINE__, err);
 					break;
 				}
+			}
+		}
+	}
+
+	void App::VidWaitForBuffer() {
+		int err;
+
+		LOGD("%s(%d):...", __FUNCTION__, __LINE__);
+
+		LOGW("Wait for test...");
+		while(true) {
+			fd_set readfds;
+			FD_ZERO(&readfds);
+
+			int fd_max = -1;
+			if(nVidFd > fd_max) fd_max = nVidFd;
+			FD_SET(nVidFd, &readfds);
+
+			err = select(fd_max + 1, &readfds, NULL, NULL, NULL);
+			if (err < 0) {
+				LOGE("%s(%d): select() failed! err = %d", __FUNCTION__, __LINE__, err);
+				break;
+			}
+
+			if (FD_ISSET(nVidFd, &readfds)) {
+				v4l2_buffer buffer;
+				v4l2_plane planes[2];
+
+				memset(&buffer, 0, sizeof(v4l2_buffer));
+				buffer.type = nBufType;
+				buffer.memory = nMemory;
+				buffer.m.planes = planes;
+				buffer.length = 2;
+				err = ioctl(nVidFd, VIDIOC_DQBUF, &buffer);
+				if(err) {
+					LOGE("%s(%d): ioctl(VIDIOC_DQBUF) failed! err = %d", __FUNCTION__, __LINE__, err);
+					break;
+				}
+
+				LOGD("VIDIOC_DQBUF, buffer.index=%d", buffer.index);
+
+				buffer.flags = 0;
+				err = ioctl(nVidFd, VIDIOC_QBUF, &buffer);
+				if(err) {
+					err = errno;
+					LOGE("%s(%d): ioctl(VIDIOC_QBUF) failed, err=%d", __FUNCTION__, __LINE__, err);
+					break;
+				}
+
+				break;
+			}
+		}
+	}
+
+	void App::VidBufDone() {
+		int err;
+
+		LOGD("%s(%d):...", __FUNCTION__, __LINE__);
+
+		switch(1) { case 1:
+			err = ioctl(nVidCtrlFd, QVID_IOC_BUF_DONE);
+			if(err) {
+				err = errno;
+				LOGE("%s(%d): ioctl(QVID_IOC_BUF_DONE) failed, err=%d", __FUNCTION__, __LINE__, err);
+				break;
+			}
+		}
+	}
+
+	void App::VidWaitForUserJob() {
+		int err;
+		qvio_user_job_args user_job_args;
+		qvio_user_job_done_args user_job_done_args;
+		qvio_user_job* pCurrentUserJob;
+
+		LOGD("%s(%d):...", __FUNCTION__, __LINE__);
+
+		switch(1) { case 1:
+			err = ioctl(nVidCtrlFd, QVID_IOC_USER_JOB, &user_job_args);
+			if(err) {
+				err = errno;
+				LOGE("%s(%d): ioctl(QVID_IOC_USER_JOB) failed, err=%d", __FUNCTION__, __LINE__, err);
+				break;
+			}
+
+			pCurrentUserJob = &user_job_args.user_job;
+
+			while(true) {
+				switch(pCurrentUserJob->id) {
+				case QVIO_USER_JOB_ID_S_FMT:
+					LOGD("QVIO_USER_JOB_ID_S_FMT(%d): type=%d %dx%d", (int)pCurrentUserJob->sequence,
+						(int)pCurrentUserJob->u.s_fmt.format.type,
+						(int)pCurrentUserJob->u.s_fmt.format.fmt.pix_mp.width,
+						(int)pCurrentUserJob->u.s_fmt.format.fmt.pix_mp.height,
+						(int)pCurrentUserJob->u.s_fmt.format.fmt.pix_mp.num_planes);
+					break;
+
+				case QVIO_USER_JOB_ID_QUEUE_SETUP:
+					LOGD("QVIO_USER_JOB_ID_QUEUE_SETUP(%d): %d", (int)pCurrentUserJob->sequence,
+						(int)pCurrentUserJob->u.queue_setup.num_buffers);
+					break;
+
+				case QVIO_USER_JOB_ID_BUF_INIT:
+					LOGD("QVIO_USER_JOB_ID_BUF_INIT(%d): %d", (int)pCurrentUserJob->sequence,
+						pCurrentUserJob->u.buf_init.index);
+					break;
+
+				case QVIO_USER_JOB_ID_BUF_CLEANUP:
+					LOGD("QVIO_USER_JOB_ID_BUF_CLEANUP(%d): %d", (int)pCurrentUserJob->sequence,
+						pCurrentUserJob->u.buf_cleanup.index);
+					break;
+
+				case QVIO_USER_JOB_ID_START_STREAMING:
+					LOGD("QVIO_USER_JOB_ID_START_STREAMING(%d)", (int)pCurrentUserJob->sequence);
+					break;
+
+				case QVIO_USER_JOB_ID_STOP_STREAMING:
+					LOGD("QVIO_USER_JOB_ID_STOP_STREAMING(%d)", (int)pCurrentUserJob->sequence);
+					break;
+
+				case QVIO_USER_JOB_ID_BUF_DONE:
+					LOGD("QVIO_USER_JOB_ID_BUF_DONE(%d): %d", (int)pCurrentUserJob->sequence,
+						pCurrentUserJob->u.buf_done.index);
+					break;
+
+				default:
+					LOGW("pCurrentUserJob: %d, %d", (int)pCurrentUserJob->id, (int)pCurrentUserJob->sequence);
+					break;
+				}
+
+				user_job_done_args.user_job_done.id = pCurrentUserJob->id;
+				user_job_done_args.user_job_done.sequence = pCurrentUserJob->sequence;
+
+				err = ioctl(nVidCtrlFd, QVID_IOC_USER_JOB_DONE, &user_job_done_args);
+				if(err) {
+					err = errno;
+					LOGE("%s(%d): ioctl(QVID_IOC_USER_JOB_DONE) failed, err=%d", __FUNCTION__, __LINE__, err);
+					break;
+				}
+
+				pCurrentUserJob = &user_job_done_args.next_user_job;
 			}
 		}
 	}
