@@ -7,6 +7,7 @@
 #include <media/videobuf2-v4l2.h>
 #include <media/videobuf2-vmalloc.h>
 
+#define HALIGN 0x1000
 #define ZZ_ALIGN(x, a) (((x)+(a)-1)&~((a)-1))
 
 struct qvio_queue_buffer {
@@ -38,8 +39,8 @@ static int qvio_queue_setup(struct vb2_queue *queue,
 
 	if(self->current_format.fmt.pix_mp.pixelformat == V4L2_PIX_FMT_NV12) {
 		*num_planes = 2;
-		sizes[0] = ZZ_ALIGN(self->current_format.fmt.pix_mp.width, 0x1000) * self->current_format.fmt.pix_mp.height;
-		sizes[1] = ZZ_ALIGN(self->current_format.fmt.pix_mp.width, 0x1000) * self->current_format.fmt.pix_mp.height / 2;
+		sizes[0] = ZZ_ALIGN(self->current_format.fmt.pix_mp.width, HALIGN) * self->current_format.fmt.pix_mp.height;
+		sizes[1] = ZZ_ALIGN(self->current_format.fmt.pix_mp.width, HALIGN) * self->current_format.fmt.pix_mp.height / 2;
 	} else {
 		pr_err("invalid value, self->current_format.fmt.pix_mp.pixelformat=%d", (int)self->current_format.fmt.pix_mp.pixelformat);
 		err = -EINVAL;

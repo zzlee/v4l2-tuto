@@ -12,7 +12,7 @@
 static struct qvio_device* g_dev_rx;
 static struct qvio_device* g_dev_tx;
 
-static int qvio_probe(struct platform_device *pdev) {
+static int probe(struct platform_device *pdev) {
 	int err = 0;
 
 	pr_info("\n");
@@ -27,7 +27,6 @@ static int qvio_probe(struct platform_device *pdev) {
 	g_dev_rx->vfl_dir = VFL_DIR_RX;
 	g_dev_rx->buffer_type = V4L2_BUF_TYPE_VIDEO_CAPTURE_MPLANE;
 	snprintf(g_dev_rx->v4l2_dev.name, V4L2_DEVICE_NAME_SIZE, "qvio-rx");
-	g_dev_rx->videonr = 0;
 
 	err = qvio_cdev_start(g_dev_rx);
 	if(err) {
@@ -51,7 +50,6 @@ static int qvio_probe(struct platform_device *pdev) {
 	g_dev_tx->vfl_dir = VFL_DIR_TX;
 	g_dev_tx->buffer_type = V4L2_BUF_TYPE_VIDEO_OUTPUT_MPLANE;
 	snprintf(g_dev_tx->v4l2_dev.name, V4L2_DEVICE_NAME_SIZE, "qvio-tx");
-	g_dev_tx->videonr = 1;
 
 	err = qvio_cdev_start(g_dev_tx);
 	if(err) {
@@ -81,7 +79,7 @@ err0:
 	return err;
 }
 
-static int qvio_remove(struct platform_device *pdev) {
+static int remove(struct platform_device *pdev) {
 	int err = 0;
 
 	pr_info("\n");
@@ -100,8 +98,8 @@ static struct platform_driver qvio_driver = {
 	.driver = {
 		.name = QVIO_DRIVER_NAME
 	},
-	.probe  = qvio_probe,
-	.remove = qvio_remove,
+	.probe  = probe,
+	.remove = remove,
 };
 
 int qvio_device_register(void) {
@@ -127,15 +125,6 @@ void qvio_device_unregister(void) {
 	platform_driver_unregister(&qvio_driver);
 }
 
-static void qvio_device_free(struct kref *ref)
-{
-	struct qvio_device* self = container_of(ref, struct qvio_device, ref);
-
-	pr_info("\n");
-
-	kfree(self);
-}
-
 struct qvio_device* qvio_device_new(void) {
 	struct qvio_device* self = kzalloc(sizeof(struct qvio_device), GFP_KERNEL);
 
@@ -156,6 +145,15 @@ struct qvio_device* qvio_device_get(struct qvio_device* self) {
 		kref_get(&self->ref);
 
 	return self;
+}
+
+static void qvio_device_free(struct kref *ref)
+{
+	struct qvio_device* self = container_of(ref, struct qvio_device, ref);
+
+	pr_info("\n");
+
+	kfree(self);
 }
 
 void qvio_device_put(struct qvio_device* self) {
@@ -209,7 +207,6 @@ int qvio_device_start(struct qvio_device* self) {
 
 	snprintf(self->vdev->name, 32, "%s", self->v4l2_dev.name);
 	self->vdev->v4l2_dev = &self->v4l2_dev;
-	self->vdev->vfl_type = VFL_TYPE_VIDEO;
 	self->vdev->vfl_dir = self->vfl_dir;
 	self->vdev->minor = -1;
 	self->vdev->fops = &qvio_device_fops;

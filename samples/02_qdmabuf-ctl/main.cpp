@@ -42,6 +42,8 @@ namespace __02_qdmabuf_ctl__ {
 		int err = 0;
 		ZzUtils::FreeStack oFreeStack;
 
+		int buf_size;
+
 		int fd_qdmabuf;
 		int fd_dma_buf_dma_contig[4];
 		int fd_dma_buf_dma_sg[4];
@@ -56,7 +58,7 @@ namespace __02_qdmabuf_ctl__ {
 #endif
 
 		switch(1) { case 1:
-			fd_qdmabuf = open("/dev/qdmabuf", O_RDWR);
+			fd_qdmabuf = open("/dev/qdmabuf0", O_RDWR);
 			if(fd_qdmabuf == -1) {
 				err = errno;
 				LOGE("%s(%d): open() failed, err=%d", __FUNCTION__, __LINE__, err);
@@ -67,9 +69,10 @@ namespace __02_qdmabuf_ctl__ {
 			};
 
 #if 0
+			buf_size = 4096 * 2160 * 2;
 			for(int i = 0;i < 4;i++) {
 				qdmabuf_alloc_args args;
-				args.len = 4096 * 2160 * 2;
+				args.len = buf_size;
 				args.type = QDMABUF_TYPE_DMA_CONTIG;
 				args.fd_flags = O_RDWR | O_CLOEXEC;
 				args.dma_dir = QDMABUF_DMA_DIR_BIDIRECTIONAL;
@@ -108,7 +111,7 @@ namespace __02_qdmabuf_ctl__ {
 #endif
 
 			for(int i = 0;i < 4;i++) {
-				int dma_buf_size = 4096 * 2160 * 2;
+				int dma_buf_size = buf_size;
 
 				dma_buf_mmap_addr[i] = mmap(NULL, dma_buf_size, PROT_READ | PROT_WRITE, MAP_SHARED, fd_dma_buf_dma_contig[i], 0);
 				if(dma_buf_mmap_addr[i] == MAP_FAILED) {
@@ -138,9 +141,10 @@ namespace __02_qdmabuf_ctl__ {
 #endif
 
 #if 0
+			buf_size = 4 * 1024 * 1024;
 			for(int i = 0;i < 4;i++) {
 				qdmabuf_alloc_args args;
-				args.len = 4 * 1024 * 1024;
+				args.len = buf_size;
 				args.type = QDMABUF_TYPE_DMA_SG;
 				args.fd_flags = O_RDWR | O_CLOEXEC;
 				args.dma_dir = QDMABUF_DMA_DIR_BIDIRECTIONAL;
@@ -163,6 +167,7 @@ namespace __02_qdmabuf_ctl__ {
 			if(err < 0)
 				break;
 
+			LOGD("+QDMABUF_IOCTL_INFO");
 			for(int i = 0;i < 4;i++) {
 				qdmabuf_info_args args;
 				args.fd = fd_dma_buf_dma_sg[i];
@@ -173,15 +178,17 @@ namespace __02_qdmabuf_ctl__ {
 					break;
 				}
 			}
+			LOGD("-QDMABUF_IOCTL_INFO");
 
 			if(err < 0)
 				break;
 #endif
 
 #if 1
+			buf_size = 4096 * 2160 * 2;
 			for(int i = 0;i < 4;i++) {
 				qdmabuf_alloc_args args;
-				args.len = 16 * 1024 * 1024;
+				args.len = buf_size;
 				args.type = QDMABUF_TYPE_VMALLOC;
 				args.fd_flags = O_RDWR | O_CLOEXEC;
 				args.dma_dir = QDMABUF_DMA_DIR_BIDIRECTIONAL;
@@ -203,6 +210,7 @@ namespace __02_qdmabuf_ctl__ {
 			if(err < 0)
 				break;
 
+			LOGD("+QDMABUF_IOCTL_INFO");
 			for(int i = 0;i < 4;i++) {
 				qdmabuf_info_args args;
 				args.fd = fd_dma_buf_vmalloc[i];
@@ -213,9 +221,10 @@ namespace __02_qdmabuf_ctl__ {
 					break;
 				}
 			}
+			LOGD("-QDMABUF_IOCTL_INFO");
 
 			for(int i = 0;i < 4;i++) {
-				int dma_buf_size = 16 * 1024 * 1024;
+				int dma_buf_size = buf_size;
 
 				dma_buf_mmap_addr[i] = mmap(NULL, dma_buf_size, PROT_READ | PROT_WRITE, MAP_SHARED, fd_dma_buf_vmalloc[i], 0);
 				if(dma_buf_mmap_addr[i] == MAP_FAILED) {
@@ -231,7 +240,7 @@ namespace __02_qdmabuf_ctl__ {
 				break;
 
 			for(int i = 0;i < 4;i++) {
-				int dma_buf_size = 16 * 1024 * 1024;
+				int dma_buf_size = buf_size;
 
 				err = munmap(dma_buf_mmap_addr[i], dma_buf_size);
 				if(err) {
@@ -245,9 +254,10 @@ namespace __02_qdmabuf_ctl__ {
 #endif
 
 #if 0
+			buf_size = 1 * 1024 * getpagesize();
 			for(int i = 0;i < 4;i++) {
 				qdmabuf_alloc_args args;
-				args.len = 1 * 1024 * getpagesize();
+				args.len = buf_size;
 				args.type = QDMABUF_TYPE_SYS_HEAP;
 				args.fd_flags = O_RDWR | O_CLOEXEC;
 				args.dma_dir = QDMABUF_DMA_DIR_BIDIRECTIONAL;
@@ -269,7 +279,7 @@ namespace __02_qdmabuf_ctl__ {
 			if(err < 0)
 				break;
 
-#if 0
+			LOGD("+QDMABUF_IOCTL_INFO");
 			for(int i = 0;i < 4;i++) {
 				qdmabuf_info_args args;
 				args.fd = fd_dma_buf_sys_heap[i];
@@ -280,18 +290,18 @@ namespace __02_qdmabuf_ctl__ {
 					break;
 				}
 			}
+			LOGD("-QDMABUF_IOCTL_INFO");
 
 			if(err < 0)
 				break;
 #endif
-#endif
 
-#if 0
+#if 1
 #if BUILD_WITH_NVBUF
 			NvBufSurfaceCreateParams oNVBufParam;
 			memset(&oNVBufParam, 0, sizeof(oNVBufParam));
-			oNVBufParam.width = 1920;
-			oNVBufParam.height = 1080;
+			oNVBufParam.width = 4096;
+			oNVBufParam.height = 2160;
 			oNVBufParam.layout = NVBUF_LAYOUT_PITCH;
 			oNVBufParam.memType = NVBUF_MEM_DEFAULT;
 			oNVBufParam.gpuId = 0;
@@ -306,9 +316,11 @@ namespace __02_qdmabuf_ctl__ {
 
 				NvBufSurfaceParams& surfaceParams = pNVBuf_surface[i]->surfaceList[0];
 
-				LOGD("surfaceParams={.with=%d, .height=%d, .pitch=%d, .bufferDesc=%d}",
-					surfaceParams.width, surfaceParams.height,
-					surfaceParams.pitch, (int)surfaceParams.bufferDesc);
+				LOGD("surfaceParams={.width=%d, .height=%d, .bufferDesc=%d, .pitch=%d/%d/%d, offset=%d/%d, psize=%d/%d}",
+					surfaceParams.width, surfaceParams.height, (int)surfaceParams.bufferDesc,
+					surfaceParams.pitch, surfaceParams.planeParams.pitch[0], surfaceParams.planeParams.pitch[1],
+					surfaceParams.planeParams.offset[0], surfaceParams.planeParams.offset[1],
+					surfaceParams.planeParams.psize[0], surfaceParams.planeParams.psize[1]);
 
 				fd_dma_buf_nvbuf[i] = (int)surfaceParams.bufferDesc;
 				oFreeStack += [&, i]() {
@@ -325,6 +337,7 @@ namespace __02_qdmabuf_ctl__ {
 			if(err < 0)
 				break;
 
+			LOGD("+QDMABUF_IOCTL_INFO");
 			for(int i = 0;i < 4;i++) {
 				qdmabuf_info_args args;
 				args.fd = fd_dma_buf_nvbuf[i];
@@ -335,6 +348,7 @@ namespace __02_qdmabuf_ctl__ {
 					break;
 				}
 			}
+			LOGD("-QDMABUF_IOCTL_INFO");
 
 			if(err < 0)
 				break;

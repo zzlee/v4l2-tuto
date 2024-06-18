@@ -11,7 +11,7 @@
 #define QVIO_MINOR_BASE		(0)
 #define QVIO_MINOR_COUNT	(255)
 
-static struct class *g_qvio_class = NULL;
+static struct class *g_class = NULL;
 static int g_major = 0;
 static int g_cdevno_base = 0;
 
@@ -22,12 +22,12 @@ int qvio_cdev_register(void) {
 	pr_info("\n");
 
 #if LINUX_VERSION_CODE <= KERNEL_VERSION(6,4,0)
-	g_qvio_class = class_create(THIS_MODULE, QVIO_NODE_NAME);
+	g_class = class_create(THIS_MODULE, QVIO_NODE_NAME);
 #else
-	g_qvio_class = class_create(QVIO_NODE_NAME);
+	g_class = class_create(QVIO_NODE_NAME);
 #endif
-	if (IS_ERR(g_qvio_class)) {
-		pr_err("class_create() failed, g_qvio_class=%p\n", g_qvio_class);
+	if (IS_ERR(g_class)) {
+		pr_err("class_create() failed, g_class=%p\n", g_class);
 		err = -EINVAL;
 		goto err0;
 	}
@@ -46,7 +46,7 @@ int qvio_cdev_register(void) {
 	return err;
 
 err1:
-	class_destroy(g_qvio_class);
+	class_destroy(g_class);
 err0:
 	return err;
 }
@@ -55,7 +55,7 @@ void qvio_cdev_unregister(void) {
 	pr_info("\n");
 
 	unregister_chrdev_region(MKDEV(g_major, QVIO_MINOR_BASE), QVIO_MINOR_COUNT);
-	class_destroy(g_qvio_class);
+	class_destroy(g_class);
 }
 
 void qvio_cdev_init(struct qvio_device* self) {
@@ -63,7 +63,7 @@ void qvio_cdev_init(struct qvio_device* self) {
 	memset(&self->cdev, 0, sizeof(struct cdev));
 }
 
-static int qvio_file_open(struct inode *inode, struct file *filp) {
+static int file_open(struct inode *inode, struct file *filp) {
 	struct qvio_device* device = container_of(inode->i_cdev, struct qvio_device, cdev);
 
 	pr_info("device=%p\n", device);
@@ -74,7 +74,7 @@ static int qvio_file_open(struct inode *inode, struct file *filp) {
 	return 0;
 }
 
-static long qvio_file_ioctl(struct file * filp, unsigned int cmd, unsigned long arg) {
+static long file_ioctl(struct file * filp, unsigned int cmd, unsigned long arg) {
 	long ret;
 	struct qvio_device* device = filp->private_data;
 
@@ -140,8 +140,8 @@ static long qvio_file_ioctl(struct file * filp, unsigned int cmd, unsigned long 
 }
 
 static struct file_operations qvio_fops = {
-	.open = qvio_file_open,
-	.unlocked_ioctl = qvio_file_ioctl,
+	.open = file_open,
+	.unlocked_ioctl = file_ioctl,
 };
 
 int qvio_cdev_start(struct qvio_device* self) {
@@ -159,7 +159,7 @@ int qvio_cdev_start(struct qvio_device* self) {
 		goto err0;
 	}
 
-	new_device = device_create(g_qvio_class, NULL, self->cdevno, self,
+	new_device = device_create(g_class, NULL, self->cdevno, self,
 		QVIO_NODE_NAME "%d", MINOR(self->cdevno));
 	if (IS_ERR(new_device)) {
 		pr_err("device_create() failed, new_device=%p\n", new_device);
@@ -177,6 +177,6 @@ err0:
 void qvio_cdev_stop(struct qvio_device* self) {
 	pr_info("\n");
 
-	device_destroy(g_qvio_class, self->cdevno);
+	device_destroy(g_class, self->cdevno);
 	cdev_del(&self->cdev);
 }

@@ -5,7 +5,6 @@
 #include <linux/platform_device.h>
 
 #include "version.h"
-#include "module.h"
 #include "device.h"
 #include "cdev.h"
 

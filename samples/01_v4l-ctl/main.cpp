@@ -192,7 +192,7 @@ namespace __01_v4l_ctl__ {
 				break;
 			}
 
-			nVidFd = open("/dev/video0", O_RDWR | O_NONBLOCK);
+			nVidFd = open("/dev/video2", O_RDWR | O_NONBLOCK);
 			if(nVidFd == -1) {
 				err = errno;
 				LOGE("%s(%d): open() failed, err=%d", __FUNCTION__, __LINE__, err);
@@ -244,7 +244,7 @@ namespace __01_v4l_ctl__ {
 				break;
 			}
 
-			nVidFd = open("/dev/video1", O_RDWR | O_NONBLOCK);
+			nVidFd = open("/dev/video3", O_RDWR | O_NONBLOCK);
 			if(nVidFd == -1) {
 				err = errno;
 				LOGE("%s(%d): open() failed, err=%d", __FUNCTION__, __LINE__, err);

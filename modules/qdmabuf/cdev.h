@@ -1,19 +1,14 @@
 #ifndef __QDMABUF_CDEV_H__
 #define __QDMABUF_CDEV_H__
 
-#include <linux/cdev.h>
+#include "device.h"
 
-struct qdmabuf_cdev {
-	dev_t cdevno;
-	struct cdev cdev;
-	struct device* device; // platform device
+int qdmabuf_cdev_register(void);
+void qdmabuf_cdev_unregister(void);
 
-	wait_queue_head_t wq_head;
-	__u32 wq_event;
-};
+void qdmabuf_cdev_init(struct qdmabuf_device* self);
 
-int qdmabuf_cdev_init(void);
-void qdmabuf_cdev_cleanup(void);
-int qdmabuf_cdev_create_interfaces(struct device* device);
+int qdmabuf_cdev_start(struct qdmabuf_device* self);
+void qdmabuf_cdev_stop(struct qdmabuf_device* self);
 
 #endif // __QDMABUF_CDEV_H__

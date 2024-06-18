@@ -1,9 +1,9 @@
 #ifndef __QDMABUF_VERSION_H__
 #define __QDMABUF_VERSION_H__
 
-#define DRV_MOD_MAJOR		2020
-#define DRV_MOD_MINOR		2
-#define DRV_MOD_PATCHLEVEL	2
+#define DRV_MOD_MAJOR		2024
+#define DRV_MOD_MINOR		6
+#define DRV_MOD_PATCHLEVEL	0
 
 #define DRV_MODULE_VERSION      \
 	__stringify(DRV_MOD_MAJOR) "." \

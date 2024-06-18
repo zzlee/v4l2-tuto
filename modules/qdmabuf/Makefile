@@ -5,7 +5,9 @@ PWD := $(shell pwd)
 obj-m += qdmabuf.o
 qdmabuf-objs := \
 	module.o \
+	device.o \
 	cdev.o \
+	ioctl.o \
 	dmabuf_exp.o \
 	dmabuf_exp_dma_contig.o \
 	dmabuf_exp_dma_sg.o \

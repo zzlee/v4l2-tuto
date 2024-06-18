@@ -65,6 +65,9 @@ struct qvio_user_job_done {
 		struct {
 			int flags;
 			int dma_buf;
+			int offset[4];
+			int pitch[4];
+			int psize[4];
 		} buf_init;
 
 		struct {
