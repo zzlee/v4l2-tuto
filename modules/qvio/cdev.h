@@ -3,6 +3,8 @@
 
 #include "device.h"
 
+#define QVIO_CDEV_NAME "qvio"
+
 int qvio_cdev_register(void);
 void qvio_cdev_unregister(void);
 

@@ -7,8 +7,8 @@
 void qvio_user_job_init(struct qvio_device* self);
 
 // proprietary v4l2 ioctl
-long qvio_user_job_wait(struct qvio_device* self, struct qvio_user_job* user_job);
-long qvio_user_job_done(struct qvio_device* self, struct qvio_user_job_done_args* args);
+long qvio_user_job_ioctl_wait(struct qvio_device* self, unsigned long arg);
+long qvio_user_job_ioctl_done(struct qvio_device* self, unsigned long arg);
 
 // user-job
 int qvio_user_job_s_fmt(struct qvio_device* self, struct v4l2_format *format);

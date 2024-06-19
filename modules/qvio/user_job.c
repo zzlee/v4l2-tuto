@@ -13,7 +13,7 @@ void qvio_user_job_init(struct qvio_device* self) {
 	memset(&self->current_user_job_done, 0, sizeof(struct qvio_user_job));
 }
 
-long qvio_user_job_wait(struct qvio_device* self, struct qvio_user_job* user_job) {
+static long __user_job_wait(struct qvio_device* self, struct qvio_user_job* user_job) {
 	long ret;
 	int err;
 	__u32 last_wq_event;
@@ -42,7 +42,7 @@ err0:
 	return ret;
 }
 
-long qvio_user_job_done(struct qvio_device* self, struct qvio_user_job_done_args* args) {
+static long __user_job_done(struct qvio_device* self, struct qvio_user_job_done_args* args) {
 	pr_info("\n");
 
 	self->user_job_waiting = false;
@@ -51,10 +51,73 @@ long qvio_user_job_done(struct qvio_device* self, struct qvio_user_job_done_args
 	self->user_job_done_wq_event++;
 	wake_up_interruptible(&self->user_job_done_wq);
 
-	return qvio_user_job_wait(self, &args->next_user_job);
+	return __user_job_wait(self, &args->next_user_job);
 }
 
-int qvio_user_job_wait_done(struct qvio_device* self) {
+long qvio_user_job_ioctl_wait(struct qvio_device* self, unsigned long arg) {
+	long ret;
+	struct qvio_user_job_args args;
+
+	ret = __user_job_wait(self, &args.user_job);
+	if (ret != 0) {
+		pr_err("__user_job_wait() failed, err=%d\n", (int)ret);
+
+		ret = -EFAULT;
+		goto err0;
+	}
+
+	ret = copy_to_user((void __user *)arg, &args, sizeof(args));
+	if (ret != 0) {
+		pr_err("copy_from_user() failed, err=%d\n", (int)ret);
+
+		ret = -EFAULT;
+		goto err0;
+	}
+
+	ret = 0;
+
+	return ret;
+
+err0:
+	return ret;
+}
+
+long qvio_user_job_ioctl_done(struct qvio_device* self, unsigned long arg) {
+	long ret;
+	struct qvio_user_job_done_args args;
+
+	ret = copy_from_user(&args, (void __user *)arg, sizeof(args));
+	if (ret != 0) {
+		pr_err("copy_from_user() failed, err=%d\n", (int)ret);
+
+		ret = -EFAULT;
+		goto err0;
+	}
+
+	ret = __user_job_done(self, &args);
+	if (ret != 0) {
+		pr_err("__user_job_done() failed, err=%d\n", (int)ret);
+
+		ret = -EFAULT;
+		goto err0;
+	}
+
+	ret = copy_to_user((void __user *)arg, &args, sizeof(args));
+	if (ret != 0) {
+		pr_err("copy_from_user() failed, err=%d\n", (int)ret);
+
+		ret = -EFAULT;
+		goto err0;
+	}
+
+	ret = 0;
+	return ret;
+
+err0:
+	return ret;
+}
+
+static int __user_job_wait_done(struct qvio_device* self) {
 	int err;
 	__u32 last_wq_event;
 
@@ -85,6 +148,7 @@ int qvio_user_job_s_fmt(struct qvio_device* self, struct v4l2_format *format) {
 
 	if(! self->user_job_waiting) {
 		pr_err("unexpected value, self->user_job_waiting=%d\n", (int)self->user_job_waiting);
+		err = -EFAULT;
 		goto err0;
 	}
 
@@ -92,9 +156,9 @@ int qvio_user_job_s_fmt(struct qvio_device* self, struct v4l2_format *format) {
 	self->current_user_job.sequence = self->user_job_sequence++;
 	memcpy(&self->current_user_job.u.s_fmt.format, format, sizeof(struct v4l2_format));
 
-	err = qvio_user_job_wait_done(self);
+	err = __user_job_wait_done(self);
 	if(err) {
-		pr_err("wait_event_interruptible() failed, err=%d\n", err);
+		pr_err("__user_job_wait_done() failed, err=%d\n", err);
 		goto err0;
 	}
 
@@ -113,6 +177,7 @@ int qvio_user_job_queue_setup(struct qvio_device* self, unsigned int num_buffers
 
 	if(! self->user_job_waiting) {
 		pr_err("unexpected value, self->user_job_waiting=%d\n", (int)self->user_job_waiting);
+		err = -EFAULT;
 		goto err0;
 	}
 
@@ -120,9 +185,9 @@ int qvio_user_job_queue_setup(struct qvio_device* self, unsigned int num_buffers
 	self->current_user_job.sequence = self->user_job_sequence++;
 	self->current_user_job.u.queue_setup.num_buffers = num_buffers;
 
-	err = qvio_user_job_wait_done(self);
+	err = __user_job_wait_done(self);
 	if(err) {
-		pr_err("wait_event_interruptible() failed, err=%d\n", err);
+		pr_err("__user_job_wait_done() failed, err=%d\n", err);
 		goto err0;
 	}
 
@@ -141,6 +206,7 @@ int qvio_user_job_buf_init(struct qvio_device* self, struct vb2_buffer *buffer) 
 
 	if(! self->user_job_waiting) {
 		pr_err("unexpected value, self->user_job_waiting=%d\n", (int)self->user_job_waiting);
+		err = -EFAULT;
 		goto err0;
 	}
 
@@ -148,9 +214,9 @@ int qvio_user_job_buf_init(struct qvio_device* self, struct vb2_buffer *buffer) 
 	self->current_user_job.sequence = self->user_job_sequence++;
 	self->current_user_job.u.buf_init.index = buffer->index;
 
-	err = qvio_user_job_wait_done(self);
+	err = __user_job_wait_done(self);
 	if(err) {
-		pr_err("wait_event_interruptible() failed, err=%d\n", err);
+		pr_err("__user_job_wait_done() failed, err=%d\n", err);
 		goto err0;
 	}
 
@@ -169,6 +235,7 @@ int qvio_user_job_buf_cleanup(struct qvio_device* self, struct vb2_buffer *buffe
 
 	if(! self->user_job_waiting) {
 		pr_err("unexpected value, self->user_job_waiting=%d\n", (int)self->user_job_waiting);
+		err = -EFAULT;
 		goto err0;
 	}
 
@@ -176,9 +243,9 @@ int qvio_user_job_buf_cleanup(struct qvio_device* self, struct vb2_buffer *buffe
 	self->current_user_job.sequence = self->user_job_sequence++;
 	self->current_user_job.u.buf_cleanup.index = buffer->index;
 
-	err = qvio_user_job_wait_done(self);
+	err = __user_job_wait_done(self);
 	if(err) {
-		pr_err("wait_event_interruptible() failed, err=%d\n", err);
+		pr_err("__user_job_wait_done() failed, err=%d\n", err);
 		goto err0;
 	}
 
@@ -197,6 +264,7 @@ int qvio_user_job_start_streaming(struct qvio_device* self) {
 
 	if(! self->user_job_waiting) {
 		pr_err("unexpected value, self->user_job_waiting=%d\n", (int)self->user_job_waiting);
+		err = -EFAULT;
 		goto err0;
 	}
 
@@ -204,9 +272,9 @@ int qvio_user_job_start_streaming(struct qvio_device* self) {
 	self->current_user_job.sequence = self->user_job_sequence++;
 	self->current_user_job.u.start_streaming.flags = 0;
 
-	err = qvio_user_job_wait_done(self);
+	err = __user_job_wait_done(self);
 	if(err) {
-		pr_err("wait_event_interruptible() failed, err=%d\n", err);
+		pr_err("__user_job_wait_done() failed, err=%d\n", err);
 		goto err0;
 	}
 
@@ -225,6 +293,7 @@ int qvio_user_job_stop_streaming(struct qvio_device* self) {
 
 	if(! self->user_job_waiting) {
 		pr_err("unexpected value, self->user_job_waiting=%d\n", (int)self->user_job_waiting);
+		err = -EFAULT;
 		goto err0;
 	}
 
@@ -232,9 +301,9 @@ int qvio_user_job_stop_streaming(struct qvio_device* self) {
 	self->current_user_job.sequence = self->user_job_sequence++;
 	self->current_user_job.u.start_streaming.flags = 0;
 
-	err = qvio_user_job_wait_done(self);
+	err = __user_job_wait_done(self);
 	if(err) {
-		pr_err("wait_event_interruptible() failed, err=%d\n", err);
+		pr_err("__user_job_wait_done() failed, err=%d\n", err);
 		goto err0;
 	}
 
@@ -253,6 +322,7 @@ int qvio_user_job_buf_done(struct qvio_device* self, struct vb2_buffer *buffer) 
 
 	if(! self->user_job_waiting) {
 		pr_err("unexpected value, self->user_job_waiting=%d\n", (int)self->user_job_waiting);
+		err = -EFAULT;
 		goto err0;
 	}
 
@@ -260,9 +330,9 @@ int qvio_user_job_buf_done(struct qvio_device* self, struct vb2_buffer *buffer) 
 	self->current_user_job.sequence = self->user_job_sequence++;
 	self->current_user_job.u.buf_done.index = buffer->index;
 
-	err = qvio_user_job_wait_done(self);
+	err = __user_job_wait_done(self);
 	if(err) {
-		pr_err("wait_event_interruptible() failed, err=%d\n", err);
+		pr_err("__user_job_wait_done() failed, err=%d\n", err);
 		goto err0;
 	}
 

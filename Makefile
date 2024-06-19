@@ -5,7 +5,8 @@ SUBDIRS = \
 
 SUBDIRS += \
 	samples/01_v4l-ctl \
-	samples/02_qdmabuf-ctl
+	samples/02_qdmabuf-ctl \
+	samples/03_qvio-ctl
 
 .PHONY: all
 all:

@@ -7,9 +7,6 @@
 #include <media/videobuf2-v4l2.h>
 #include <media/videobuf2-vmalloc.h>
 
-#define HALIGN 0x1000
-#define ZZ_ALIGN(x, a) (((x)+(a)-1)&~((a)-1))
-
 struct qvio_queue_buffer {
 	struct vb2_v4l2_buffer vb;
 	struct list_head list;
@@ -37,14 +34,45 @@ static int qvio_queue_setup(struct vb2_queue *queue,
 	if(*num_buffers < 1)
 		*num_buffers = 1;
 
-	if(self->current_format.fmt.pix_mp.pixelformat == V4L2_PIX_FMT_NV12) {
-		*num_planes = 2;
-		sizes[0] = ZZ_ALIGN(self->current_format.fmt.pix_mp.width, HALIGN) * self->current_format.fmt.pix_mp.height;
-		sizes[1] = ZZ_ALIGN(self->current_format.fmt.pix_mp.width, HALIGN) * self->current_format.fmt.pix_mp.height / 2;
-	} else {
-		pr_err("invalid value, self->current_format.fmt.pix_mp.pixelformat=%d", (int)self->current_format.fmt.pix_mp.pixelformat);
+	switch(self->current_format.type) {
+	case V4L2_BUF_TYPE_VIDEO_CAPTURE:
+	case V4L2_BUF_TYPE_VIDEO_OUTPUT:
+		switch(self->current_format.fmt.pix.pixelformat) {
+		case V4L2_PIX_FMT_NV12:
+			*num_planes = 1;
+			sizes[0] = ZZ_ALIGN(self->current_format.fmt.pix.width, HALIGN) * self->current_format.fmt.pix.height * 3 / 2;
+			break;
+
+		default:
+			pr_err("invalid value, self->current_format.fmt.pix.pixelformat=%d", (int)self->current_format.fmt.pix.pixelformat);
+			err = -EINVAL;
+			goto err0;
+			break;
+		}
+		break;
+
+	case V4L2_BUF_TYPE_VIDEO_CAPTURE_MPLANE:
+	case V4L2_BUF_TYPE_VIDEO_OUTPUT_MPLANE:
+		switch(self->current_format.fmt.pix_mp.pixelformat) {
+		case V4L2_PIX_FMT_NV12:
+			*num_planes = 2;
+			sizes[0] = ZZ_ALIGN(self->current_format.fmt.pix_mp.width, HALIGN) * self->current_format.fmt.pix_mp.height;
+			sizes[1] = ZZ_ALIGN(self->current_format.fmt.pix_mp.width, HALIGN) * self->current_format.fmt.pix_mp.height / 2;
+			break;
+
+		default:
+			pr_err("invalid value, self->current_format.fmt.pix_mp.pixelformat=%d", (int)self->current_format.fmt.pix_mp.pixelformat);
+			err = -EINVAL;
+			goto err0;
+			break;
+		}
+		break;
+
+	default:
+		pr_err("unexpected value, self->current_format.type=%d\n", (int)self->current_format.type);
 		err = -EINVAL;
 		goto err0;
+		break;
 	}
 
 	qvio_user_job_queue_setup(device, *num_buffers);
@@ -111,20 +139,89 @@ err0:
 static int qvio_buf_prepare(struct vb2_buffer *buffer) {
 	int err;
 	struct qvio_queue* self = vb2_get_drv_priv(buffer->vb2_queue);
-	struct qvio_device* device = container_of(self, struct qvio_device, queue);
 	struct vb2_v4l2_buffer *vbuf = to_vb2_v4l2_buffer(buffer);
 	struct qvio_queue_buffer* buf = container_of(vbuf, struct qvio_queue_buffer, vb);
+	int plane_size;
 
 	pr_info("param: %p %p %d %p\n", self, vbuf, vbuf->vb2_buf.index, buf);
 
+	switch(self->current_format.type) {
+	case V4L2_BUF_TYPE_VIDEO_CAPTURE:
+	case V4L2_BUF_TYPE_VIDEO_OUTPUT:
+		switch(self->current_format.fmt.pix.pixelformat) {
+		case V4L2_PIX_FMT_NV12:
+			plane_size = vb2_plane_size(buffer, 0);
+			if(plane_size < ZZ_ALIGN(self->current_format.fmt.pix.width, HALIGN) * self->current_format.fmt.pix.height * 3 / 2) {
+				pr_err("unexpected value, plane_size=%d\n", plane_size);
+
+				err = -EINVAL;
+				goto err0;
+			}
+			vb2_set_plane_payload(buffer, 0, plane_size);
+			break;
+
+		default:
+			pr_err("unexpected value, self->current_format.fmt.pix.pixelformat=0x%X\n", (int)self->current_format.fmt.pix.pixelformat);
+
+			err = -EINVAL;
+			goto err0;
+			break;
+		}
+		break;
+
+	case V4L2_BUF_TYPE_VIDEO_CAPTURE_MPLANE:
+	case V4L2_BUF_TYPE_VIDEO_OUTPUT_MPLANE:
+		switch(self->current_format.fmt.pix_mp.pixelformat) {
+		case V4L2_PIX_FMT_NV12:
+			plane_size = vb2_plane_size(buffer, 0);
+			if(plane_size < ZZ_ALIGN(self->current_format.fmt.pix_mp.width, HALIGN) * self->current_format.fmt.pix_mp.height) {
+				pr_err("unexpected value, plane_size=%d\n", plane_size);
+
+				err = -EINVAL;
+				goto err0;
+			}
+			vb2_set_plane_payload(buffer, 0, plane_size);
+
+			plane_size = vb2_plane_size(buffer, 1);
+			if(plane_size < ZZ_ALIGN(self->current_format.fmt.pix_mp.width, HALIGN) * self->current_format.fmt.pix_mp.height / 2) {
+				pr_err("unexpected value, plane_size=%d\n", plane_size);
+
+				err = -EINVAL;
+				goto err0;
+			}
+			vb2_set_plane_payload(buffer, 1, plane_size);
+			break;
+
+		default:
+			pr_err("unexpected value, self->current_format.fmt.pix_mp.pixelformat=0x%X\n", (int)self->current_format.fmt.pix_mp.pixelformat);
+
+			err = -EINVAL;
+			goto err0;
+			break;
+		}
+		break;
+
+	default:
+		pr_err("unexpected value, self->current_format.type=%d\n", (int)self->current_format.type);
+
+		err = -EINVAL;
+		goto err0;
+		break;
+	}
+
+	if(vbuf->field == V4L2_FIELD_ANY)
+		vbuf->field = V4L2_FIELD_NONE;
+
 	err = 0;
 
+	return err;
+
+err0:
 	return err;
 }
 
 static void qvio_buf_queue(struct vb2_buffer *buffer) {
 	struct qvio_queue* self = vb2_get_drv_priv(buffer->vb2_queue);
-	struct qvio_device* device = container_of(self, struct qvio_device, queue);
 	struct vb2_v4l2_buffer *vbuf = to_vb2_v4l2_buffer(buffer);
 	struct qvio_queue_buffer* buf = container_of(vbuf, struct qvio_queue_buffer, vb);
 
@@ -190,7 +287,8 @@ int qvio_queue_start(struct qvio_queue* self, enum v4l2_buf_type type) {
 	pr_info("\n");
 
 	self->queue.type = type;
-	if(type == V4L2_BUF_TYPE_VIDEO_CAPTURE_MPLANE)
+	if(type == V4L2_BUF_TYPE_VIDEO_CAPTURE ||
+		type == V4L2_BUF_TYPE_VIDEO_CAPTURE_MPLANE)
 		self->queue.io_modes = VB2_READ;
 	else
 		self->queue.io_modes = VB2_WRITE;

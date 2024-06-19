@@ -2,12 +2,12 @@
 
 #include "device.h"
 #include "ioctl.h"
+#include "cdev.h"
 #include "user_job.h"
 
 #include <linux/version.h>
 #include <linux/device.h>
 
-#define QVIO_NODE_NAME		"qvio"
 #define QVIO_MINOR_BASE		(0)
 #define QVIO_MINOR_COUNT	(255)
 
@@ -22,9 +22,9 @@ int qvio_cdev_register(void) {
 	pr_info("\n");
 
 #if LINUX_VERSION_CODE <= KERNEL_VERSION(6,4,0)
-	g_class = class_create(THIS_MODULE, QVIO_NODE_NAME);
+	g_class = class_create(THIS_MODULE, QVIO_CDEV_NAME);
 #else
-	g_class = class_create(QVIO_NODE_NAME);
+	g_class = class_create(QVIO_CDEV_NAME);
 #endif
 	if (IS_ERR(g_class)) {
 		pr_err("class_create() failed, g_class=%p\n", g_class);
@@ -32,7 +32,7 @@ int qvio_cdev_register(void) {
 		goto err0;
 	}
 
-	err = alloc_chrdev_region(&dev, QVIO_MINOR_BASE, QVIO_MINOR_COUNT, QVIO_NODE_NAME);
+	err = alloc_chrdev_region(&dev, QVIO_MINOR_BASE, QVIO_MINOR_COUNT, QVIO_CDEV_NAME);
 	if (err) {
 		pr_err("alloc_chrdev_region() failed, err=%d\n", err);
 		goto err1;
@@ -83,52 +83,12 @@ static long file_ioctl(struct file * filp, unsigned int cmd, unsigned long arg) 
 		ret = qvio_device_buf_done(device);
 		break;
 
-	case QVID_IOC_USER_JOB: {
-		struct qvio_user_job_args args;
-		ret = qvio_user_job_wait(device, &args.user_job);
-		if (ret != 0) {
-			pr_err("qvio_user_job_wait() failed, err=%d\n", (int)ret);
-
-			ret = -EFAULT;
-			break;
-		}
-
-		ret = copy_to_user((void __user *)arg, &args, sizeof(args));
-		if (ret != 0) {
-			pr_err("copy_from_user() failed, err=%d\n", (int)ret);
-
-			ret = -EFAULT;
-			break;
-		}
-	}
+	case QVID_IOC_USER_JOB:
+		ret = qvio_user_job_ioctl_wait(device, arg);
 		break;
 
-	case QVID_IOC_USER_JOB_DONE: {
-		struct qvio_user_job_done_args args;
-		ret = copy_from_user(&args, (void __user *)arg, sizeof(args));
-		if (ret != 0) {
-			pr_err("copy_from_user() failed, err=%d\n", (int)ret);
-
-			ret = -EFAULT;
-			break;
-		}
-
-		ret = qvio_user_job_done(device, &args);
-		if (ret != 0) {
-			pr_err("qvio_user_job_done() failed, err=%d\n", (int)ret);
-
-			ret = -EFAULT;
-			break;
-		}
-
-		ret = copy_to_user((void __user *)arg, &args, sizeof(args));
-		if (ret != 0) {
-			pr_err("copy_from_user() failed, err=%d\n", (int)ret);
-
-			ret = -EFAULT;
-			break;
-		}
-	}
+	case QVID_IOC_USER_JOB_DONE:
+		ret = qvio_user_job_ioctl_done(device, arg);
 		break;
 
 	default:
@@ -160,7 +120,7 @@ int qvio_cdev_start(struct qvio_device* self) {
 	}
 
 	new_device = device_create(g_class, NULL, self->cdevno, self,
-		QVIO_NODE_NAME "%d", MINOR(self->cdevno));
+		QVIO_CDEV_NAME "%d", MINOR(self->cdevno));
 	if (IS_ERR(new_device)) {
 		pr_err("device_create() failed, new_device=%p\n", new_device);
 		goto err1;
