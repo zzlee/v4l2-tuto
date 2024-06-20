@@ -29,16 +29,16 @@ static int probe(struct platform_device *pdev) {
 	g_dev_rx->device_caps = V4L2_CAP_VIDEO_CAPTURE | V4L2_CAP_STREAMING;
 	snprintf(g_dev_rx->v4l2_dev.name, V4L2_DEVICE_NAME_SIZE, "qvio-rx");
 
-	err = qvio_cdev_start(g_dev_rx);
-	if(err) {
-		pr_err("qvio_cdev_start() failed, err=%d\n", err);
-		goto err1;
-	}
-
 	err = qvio_device_start(g_dev_rx);
 	if(err) {
 		pr_err("qvio_device_start() failed, err=%d\n", err);
 		goto err2;
+	}
+
+	err = qvio_cdev_start(g_dev_rx);
+	if(err) {
+		pr_err("qvio_cdev_start() failed, err=%d\n", err);
+		goto err1;
 	}
 
 	g_dev_tx = qvio_device_new();
@@ -53,16 +53,16 @@ static int probe(struct platform_device *pdev) {
 	g_dev_tx->device_caps = V4L2_CAP_VIDEO_OUTPUT | V4L2_CAP_STREAMING;
 	snprintf(g_dev_tx->v4l2_dev.name, V4L2_DEVICE_NAME_SIZE, "qvio-tx");
 
-	err = qvio_cdev_start(g_dev_tx);
-	if(err) {
-		pr_err("qvio_cdev_start() failed, err=%d\n", err);
-		goto err4;
-	}
-
 	err = qvio_device_start(g_dev_tx);
 	if(err) {
 		pr_err("qvio_device_start() failed, err=%d\n", err);
 		goto err5;
+	}
+
+	err = qvio_cdev_start(g_dev_tx);
+	if(err) {
+		pr_err("qvio_cdev_start() failed, err=%d\n", err);
+		goto err4;
 	}
 
 	return err;
@@ -137,7 +137,7 @@ struct qvio_device* qvio_device_new(void) {
 	self->buffer_type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
 	self->device_caps = V4L2_CAP_VIDEO_CAPTURE | V4L2_CAP_STREAMING;
 	qvio_cdev_init(self);
-	qvio_user_job_init(self);
+	qvio_user_job_init(&self->user_job);
 
 	return self;
 }
@@ -304,7 +304,7 @@ int qvio_device_s_fmt(struct qvio_device* self, struct v4l2_format *format) {
 		goto err0;
 	}
 
-	qvio_user_job_s_fmt(self, format);
+	qvio_user_job_s_fmt(&self->user_job, format);
 
 	memcpy(&self->current_format, format, sizeof(struct v4l2_format));
 	err = qvio_queue_s_fmt(&self->queue, format);

@@ -63,7 +63,7 @@ void qvio_cdev_init(struct qvio_device* self) {
 	memset(&self->cdev, 0, sizeof(struct cdev));
 }
 
-static int file_open(struct inode *inode, struct file *filp) {
+static int __file_open(struct inode *inode, struct file *filp) {
 	struct qvio_device* device = container_of(inode->i_cdev, struct qvio_device, cdev);
 
 	pr_info("device=%p\n", device);
@@ -74,7 +74,15 @@ static int file_open(struct inode *inode, struct file *filp) {
 	return 0;
 }
 
-static long file_ioctl(struct file * filp, unsigned int cmd, unsigned long arg) {
+static int __file_release(struct inode *inode, struct file *filp) {
+	struct qvio_device* device = container_of(inode->i_cdev, struct qvio_device, cdev);
+
+	pr_info("device=%p\n", device);
+
+	return 0;
+}
+
+static long __file_ioctl(struct file * filp, unsigned int cmd, unsigned long arg) {
 	long ret;
 	struct qvio_device* device = filp->private_data;
 
@@ -83,12 +91,12 @@ static long file_ioctl(struct file * filp, unsigned int cmd, unsigned long arg) 
 		ret = qvio_device_buf_done(device);
 		break;
 
-	case QVID_IOC_USER_JOB:
-		ret = qvio_user_job_ioctl_wait(device, arg);
+	case QVID_IOC_USER_JOB_GET:
+		ret = qvio_user_job_ioctl_get(&device->user_job, arg);
 		break;
 
 	case QVID_IOC_USER_JOB_DONE:
-		ret = qvio_user_job_ioctl_done(device, arg);
+		ret = qvio_user_job_ioctl_done(&device->user_job, arg);
 		break;
 
 	default:
@@ -99,9 +107,31 @@ static long file_ioctl(struct file * filp, unsigned int cmd, unsigned long arg) 
 	return ret;
 }
 
+static ssize_t __file_read(struct file *filp, char *buf, size_t size, loff_t *f_pos) {
+	struct qvio_device* device = filp->private_data;
+
+	return qvio_user_job_read(&device->user_job, filp, buf, size, f_pos);
+}
+
+static ssize_t __file_write(struct file *filp, const char *buf, size_t size, loff_t *f_pos) {
+	struct qvio_device* device = filp->private_data;
+
+	return qvio_user_job_write(&device->user_job, filp, buf, size, f_pos);
+}
+
+static __poll_t __file_poll(struct file *filp, struct poll_table_struct *wait) {
+	struct qvio_device* device = filp->private_data;
+
+	return qvio_user_job_poll(&device->user_job, filp, wait);
+}
+
 static struct file_operations qvio_fops = {
-	.open = file_open,
-	.unlocked_ioctl = file_ioctl,
+	.open = __file_open,
+	.release = __file_release,
+	.unlocked_ioctl = __file_ioctl,
+	.read = __file_read,
+	.write = __file_write,
+	.poll = __file_poll,
 };
 
 int qvio_cdev_start(struct qvio_device* self) {

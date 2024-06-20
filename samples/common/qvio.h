@@ -88,19 +88,10 @@ struct qvio_user_job_done {
 	} u;
 };
 
-struct qvio_user_job_args {
-	struct qvio_user_job user_job;
-};
-
-struct qvio_user_job_done_args {
-	struct qvio_user_job_done user_job_done;
-	struct qvio_user_job next_user_job;
-};
-
 #define QVID_IOC_MAGIC		'Q'
 
 #define QVID_IOC_BUF_DONE		_IO  (QVID_IOC_MAGIC, 0)
-#define QVID_IOC_USER_JOB		_IOR (QVID_IOC_MAGIC, 1, struct qvio_user_job_args)
-#define QVID_IOC_USER_JOB_DONE	_IOWR(QVID_IOC_MAGIC, 2, struct qvio_user_job_done_args)
+#define QVID_IOC_USER_JOB_GET	_IOR (QVID_IOC_MAGIC, 1, struct qvio_user_job)
+#define QVID_IOC_USER_JOB_DONE	_IOW (QVID_IOC_MAGIC, 2, struct qvio_user_job_done)
 
 #endif /* _UAPI_LINUX_QVIO_H */

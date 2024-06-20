@@ -2,6 +2,7 @@
 #define __QVIO_DEVICE_H__
 
 #include "queue.h"
+#include "user_job.h"
 #include "uapi/qvio.h"
 
 #include <media/v4l2-device.h>
@@ -32,14 +33,7 @@ struct qvio_device {
 	struct cdev cdev;
 
 	// user job
-	bool user_job_waiting;
-	wait_queue_head_t user_job_wq;
-	__u32 user_job_wq_event;
-	__u16 user_job_sequence;
-	struct qvio_user_job current_user_job;
-	wait_queue_head_t user_job_done_wq;
-	__u32 user_job_done_wq_event;
-	struct qvio_user_job_done current_user_job_done;
+	struct qvio_user_job_dev user_job;
 };
 
 int qvio_device_register(void);

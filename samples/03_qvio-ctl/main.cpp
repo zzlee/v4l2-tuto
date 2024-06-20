@@ -66,8 +66,8 @@ namespace __03_qvio_ctl__ {
 		void VidStreamOff();
 		void VidQbufs();
 		void VidWaitForBuffer();
-		void VidBufDone();
-		void VidWaitForUserJob();
+		void VidBufDone(int count);
+		void VidUserJobHandling();
 	};
 
 	App::App(int argc, char **argv) : argc(argc), argv(argv) {
@@ -161,12 +161,17 @@ namespace __03_qvio_ctl__ {
 
 				case 'b':
 				case 'B':
-					VidBufDone();
+					VidBufDone(1);
 					break;
 
 				case 'c':
 				case 'C':
-					VidWaitForUserJob();
+					VidBufDone(10);
+					break;
+
+				case 'd':
+				case 'D':
+					VidUserJobHandling();
 					break;
 				}
 
@@ -625,95 +630,138 @@ namespace __03_qvio_ctl__ {
 		}
 	}
 
-	void App::VidBufDone() {
+	void App::VidBufDone(int count) {
 		int err;
 
-		LOGD("%s(%d):...", __FUNCTION__, __LINE__);
+		LOGD("%s(%d):... %d", __FUNCTION__, __LINE__, count);
 
-		switch(1) { case 1:
+		for(int i = 0;i < count;i++) {
 			err = ioctl(nVidCtrlFd, QVID_IOC_BUF_DONE);
 			if(err) {
 				err = errno;
 				LOGE("%s(%d): ioctl(QVID_IOC_BUF_DONE) failed, err=%d", __FUNCTION__, __LINE__, err);
 				break;
 			}
+
+			usleep(16000);
 		}
 	}
 
-	void App::VidWaitForUserJob() {
+	void App::VidUserJobHandling() {
 		int err;
-		qvio_user_job_args user_job_args;
-		qvio_user_job_done_args user_job_done_args;
-		qvio_user_job* pCurrentUserJob;
 
-		LOGD("%s(%d):...", __FUNCTION__, __LINE__);
+		LOGD("%s(%d):+++", __FUNCTION__, __LINE__);
 
-		switch(1) { case 1:
-			err = ioctl(nVidCtrlFd, QVID_IOC_USER_JOB, &user_job_args);
-			if(err) {
-				err = errno;
-				LOGE("%s(%d): ioctl(QVID_IOC_USER_JOB) failed, err=%d", __FUNCTION__, __LINE__, err);
+		int fd_stdin = 0; // stdin
+
+		while(true) {
+			fd_set readfds;
+			FD_ZERO(&readfds);
+
+			int fd_max = -1;
+			if(fd_stdin > fd_max) fd_max = fd_stdin;
+			if(nVidCtrlFd > fd_max) fd_max = nVidCtrlFd;
+			FD_SET(fd_stdin, &readfds);
+			FD_SET(nVidCtrlFd, &readfds);
+
+			err = select(fd_max + 1, &readfds, NULL, NULL, NULL);
+			if (err < 0) {
+				LOGE("%s(%d): select() failed! err = %d", __FUNCTION__, __LINE__, err);
 				break;
 			}
 
-			pCurrentUserJob = &user_job_args.user_job;
+			if (FD_ISSET(fd_stdin, &readfds)) {
+				int ch = getchar();
 
-			while(true) {
-				switch(pCurrentUserJob->id) {
+				if(ch == 'q')
+					break;
+			}
+
+			if (FD_ISSET(nVidCtrlFd, &readfds)) {
+				qvio_user_job user_job;
+
+#if 1
+				ssize_t ret = read(nVidCtrlFd, &user_job, sizeof(qvio_user_job));
+				if(ret != sizeof(qvio_user_job)) {
+					err = errno;
+					LOGE("%s(%d): read() failed, ret=%d, err=%d", __FUNCTION__, __LINE__, ret, err);
+					break;
+				}
+#else
+				err = ioctl(nVidCtrlFd, QVID_IOC_USER_JOB_GET, &user_job);
+				if(err) {
+					err = errno;
+					LOGE("%s(%d): ioctl(QVID_IOC_USER_JOB_GET) failed, err=%d", __FUNCTION__, __LINE__, err);
+					break;
+				}
+#endif
+
+				switch(user_job.id) {
 				case QVIO_USER_JOB_ID_S_FMT:
-					LOGD("QVIO_USER_JOB_ID_S_FMT(%d): type=%d %dx%d %d", (int)pCurrentUserJob->sequence,
-						(int)pCurrentUserJob->u.s_fmt.format.type,
-						(int)pCurrentUserJob->u.s_fmt.format.fmt.pix.width,
-						(int)pCurrentUserJob->u.s_fmt.format.fmt.pix.height,
-						(int)pCurrentUserJob->u.s_fmt.format.fmt.pix.bytesperline);
+					LOGD("QVIO_USER_JOB_ID_S_FMT(%d): type=%d %dx%d %d", (int)user_job.sequence,
+						(int)user_job.u.s_fmt.format.type,
+						(int)user_job.u.s_fmt.format.fmt.pix.width,
+						(int)user_job.u.s_fmt.format.fmt.pix.height,
+						(int)user_job.u.s_fmt.format.fmt.pix.bytesperline);
 					break;
 
 				case QVIO_USER_JOB_ID_QUEUE_SETUP:
-					LOGD("QVIO_USER_JOB_ID_QUEUE_SETUP(%d): %d", (int)pCurrentUserJob->sequence,
-						(int)pCurrentUserJob->u.queue_setup.num_buffers);
+					LOGD("QVIO_USER_JOB_ID_QUEUE_SETUP(%d): %d", (int)user_job.sequence,
+						(int)user_job.u.queue_setup.num_buffers);
 					break;
 
 				case QVIO_USER_JOB_ID_BUF_INIT:
-					LOGD("QVIO_USER_JOB_ID_BUF_INIT(%d): %d", (int)pCurrentUserJob->sequence,
-						pCurrentUserJob->u.buf_init.index);
+					LOGD("QVIO_USER_JOB_ID_BUF_INIT(%d): %d", (int)user_job.sequence,
+						user_job.u.buf_init.index);
 					break;
 
 				case QVIO_USER_JOB_ID_BUF_CLEANUP:
-					LOGD("QVIO_USER_JOB_ID_BUF_CLEANUP(%d): %d", (int)pCurrentUserJob->sequence,
-						pCurrentUserJob->u.buf_cleanup.index);
+					LOGD("QVIO_USER_JOB_ID_BUF_CLEANUP(%d): %d", (int)user_job.sequence,
+						user_job.u.buf_cleanup.index);
 					break;
 
 				case QVIO_USER_JOB_ID_START_STREAMING:
-					LOGD("QVIO_USER_JOB_ID_START_STREAMING(%d)", (int)pCurrentUserJob->sequence);
+					LOGD("QVIO_USER_JOB_ID_START_STREAMING(%d)", (int)user_job.sequence);
 					break;
 
 				case QVIO_USER_JOB_ID_STOP_STREAMING:
-					LOGD("QVIO_USER_JOB_ID_STOP_STREAMING(%d)", (int)pCurrentUserJob->sequence);
+					LOGD("QVIO_USER_JOB_ID_STOP_STREAMING(%d)", (int)user_job.sequence);
 					break;
 
 				case QVIO_USER_JOB_ID_BUF_DONE:
-					LOGD("QVIO_USER_JOB_ID_BUF_DONE(%d): %d", (int)pCurrentUserJob->sequence,
-						pCurrentUserJob->u.buf_done.index);
+					LOGD("QVIO_USER_JOB_ID_BUF_DONE(%d): %d", (int)user_job.sequence,
+						user_job.u.buf_done.index);
 					break;
 
 				default:
-					LOGW("pCurrentUserJob: %d, %d", (int)pCurrentUserJob->id, (int)pCurrentUserJob->sequence);
+					LOGW("user_job: %d, %d", (int)user_job.id, (int)user_job.sequence);
 					break;
 				}
 
-				user_job_done_args.user_job_done.id = pCurrentUserJob->id;
-				user_job_done_args.user_job_done.sequence = pCurrentUserJob->sequence;
+				qvio_user_job_done user_job_done;
 
-				err = ioctl(nVidCtrlFd, QVID_IOC_USER_JOB_DONE, &user_job_done_args);
+				user_job_done.id = user_job.id;
+				user_job_done.sequence = user_job.sequence;
+
+#if 0
+				ret = write(nVidCtrlFd, &user_job_done, sizeof(qvio_user_job_done));
+				if(ret != sizeof(qvio_user_job_done)) {
+					err = errno;
+					LOGE("%s(%d): write() failed, ret=%d, err=%d", __FUNCTION__, __LINE__, ret, err);
+					break;
+				}
+#else
+				err = ioctl(nVidCtrlFd, QVID_IOC_USER_JOB_DONE, &user_job_done);
 				if(err) {
 					err = errno;
 					LOGE("%s(%d): ioctl(QVID_IOC_USER_JOB_DONE) failed, err=%d", __FUNCTION__, __LINE__, err);
 					break;
 				}
-
-				pCurrentUserJob = &user_job_done_args.next_user_job;
+#endif
 			}
 		}
+
+		LOGD("%s(%d):---", __FUNCTION__, __LINE__);
 	}
 }
 
