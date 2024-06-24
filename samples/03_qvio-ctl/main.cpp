@@ -13,8 +13,13 @@
 #include <linux/videodev2.h>
 #include <linux/media.h>
 #include <linux/version.h>
+#include <sys/eventfd.h>
+
 #include <vector>
 #include <functional>
+#include <thread>
+#include <mutex>
+#include <deque>
 
 #include "qvio.h"
 
@@ -71,7 +76,13 @@ namespace __03_qvio_ctl__ {
 		void VidUserJobHandling();
 
 		v4l2_format oCurrentFormat;
-		std::function<void ()> oDeferred; // defer function after done-ioctl
+
+		int nDeferredTaskEvent;
+		std::mutex oDeferredTasksMutex;
+		std::deque<std::function<void ()> > oDeferredTasks; // defer tasks for done-ioctl
+		void VidDeferred_Main();
+		void AddDefer(std::function<void ()> fn);
+
 		void VidUserJob_S_FMT(const qvio_user_job& user_job, qvio_user_job_done& user_job_done);
 		void VidUserJob_QUEUE_SETUP(const qvio_user_job& user_job, qvio_user_job_done& user_job_done);
 		void VidUserJob_BUF_INIT(const qvio_user_job& user_job, qvio_user_job_done& user_job_done);
@@ -664,17 +675,140 @@ namespace __03_qvio_ctl__ {
 
 		LOGD("%s(%d):+++", __FUNCTION__, __LINE__);
 
-		int fd_stdin = 0; // stdin
+		switch(1) { case 1:
+			err = eventfd(0, EFD_SEMAPHORE | EFD_NONBLOCK);
+			if(err < 0) {
+				err = errno;
+				LOGE("%s(%d): eventfd() failed, err=%d", __FUNCTION__, __LINE__, err);
+				break;
+			}
+			nDeferredTaskEvent = err;
+
+			std::thread oDeferredThread(std::bind(&App::VidDeferred_Main, this));
+
+			int fd_stdin = 0; // stdin
+
+			while(true) {
+				fd_set readfds;
+				FD_ZERO(&readfds);
+
+				int fd_max = -1;
+				if(fd_stdin > fd_max) fd_max = fd_stdin;
+				if(nVidCtrlFd > fd_max) fd_max = nVidCtrlFd;
+				FD_SET(fd_stdin, &readfds);
+				FD_SET(nVidCtrlFd, &readfds);
+
+				err = select(fd_max + 1, &readfds, NULL, NULL, NULL);
+				if (err < 0) {
+					LOGE("%s(%d): select() failed! err = %d", __FUNCTION__, __LINE__, err);
+					break;
+				}
+
+				if (FD_ISSET(fd_stdin, &readfds)) {
+					int ch = getchar();
+
+					if(ch == 'q')
+						break;
+				}
+
+				if (FD_ISSET(nVidCtrlFd, &readfds)) {
+					qvio_user_job user_job;
+					qvio_user_job_done user_job_done;
+
+					err = ioctl(nVidCtrlFd, QVID_IOC_USER_JOB_GET, &user_job);
+					if(err) {
+						err = errno;
+						LOGE("%s(%d): ioctl(QVID_IOC_USER_JOB_GET) failed, err=%d", __FUNCTION__, __LINE__, err);
+						break;
+					}
+
+					switch(user_job.id) {
+					case QVIO_USER_JOB_ID_S_FMT:
+						VidUserJob_S_FMT(user_job, user_job_done);
+						break;
+
+					case QVIO_USER_JOB_ID_QUEUE_SETUP:
+						VidUserJob_QUEUE_SETUP(user_job, user_job_done);
+						break;
+
+					case QVIO_USER_JOB_ID_BUF_INIT:
+						VidUserJob_BUF_INIT(user_job, user_job_done);
+						break;
+
+					case QVIO_USER_JOB_ID_BUF_CLEANUP:
+						VidUserJob_BUF_CLEANUP(user_job, user_job_done);
+						break;
+
+					case QVIO_USER_JOB_ID_START_STREAMING:
+						VidUserJob_START_STREAMING(user_job, user_job_done);
+						break;
+
+					case QVIO_USER_JOB_ID_STOP_STREAMING:
+						VidUserJob_STOP_STREAMING(user_job, user_job_done);
+						break;
+
+					case QVIO_USER_JOB_ID_BUF_DONE:
+						VidUserJob_BUF_DONE(user_job, user_job_done);
+						break;
+
+					default:
+						VidUserJob_ERROR(user_job, user_job_done);
+						break;
+					}
+
+					user_job_done.id = user_job.id;
+					user_job_done.sequence = user_job.sequence;
+
+#if 1
+					LOGD("user_job_done(%d, %d)", (int)user_job_done.id, user_job_done.sequence);
+					err = ioctl(nVidCtrlFd, QVID_IOC_USER_JOB_DONE, &user_job_done);
+					if(err) {
+						err = errno;
+						LOGE("%s(%d): ioctl(QVID_IOC_USER_JOB_DONE) failed, err=%d", __FUNCTION__, __LINE__, err);
+						break;
+					}
+#endif
+				}
+			}
+
+			// notify oDeferredThread to stop
+			int64_t inc = 1;
+			err = write(nDeferredTaskEvent, &inc, sizeof(inc));
+			if(err == -1) {
+				err = errno;
+				LOGE("%s(%d): write() failed, err=%d", __FUNCTION__, __LINE__, err);
+				break;
+			}
+
+			if(err != sizeof(inc)) {
+				err = errno;
+				LOGE("%s(%d): write() failed, err=%d", __FUNCTION__, __LINE__, err);
+				break;
+			}
+
+			oDeferredThread.join();
+		}
+
+		if(nDeferredTaskEvent != -1) {
+			close(nDeferredTaskEvent);
+			nDeferredTaskEvent = -1;
+		}
+
+		LOGD("%s(%d):---", __FUNCTION__, __LINE__);
+	}
+
+	void App::VidDeferred_Main() {
+		int err;
+
+		LOGD("+++%s", __FUNCTION__);
 
 		while(true) {
 			fd_set readfds;
 			FD_ZERO(&readfds);
 
 			int fd_max = -1;
-			if(fd_stdin > fd_max) fd_max = fd_stdin;
-			if(nVidCtrlFd > fd_max) fd_max = nVidCtrlFd;
-			FD_SET(fd_stdin, &readfds);
-			FD_SET(nVidCtrlFd, &readfds);
+			if(nDeferredTaskEvent > fd_max) fd_max = nDeferredTaskEvent;
+			FD_SET(nDeferredTaskEvent, &readfds);
 
 			err = select(fd_max + 1, &readfds, NULL, NULL, NULL);
 			if (err < 0) {
@@ -682,78 +816,72 @@ namespace __03_qvio_ctl__ {
 				break;
 			}
 
-			if (FD_ISSET(fd_stdin, &readfds)) {
-				int ch = getchar();
-
-				if(ch == 'q')
-					break;
-			}
-
-			if (FD_ISSET(nVidCtrlFd, &readfds)) {
-				qvio_user_job user_job;
-				qvio_user_job_done user_job_done;
-
-				err = ioctl(nVidCtrlFd, QVID_IOC_USER_JOB_GET, &user_job);
-				if(err) {
+			if (FD_ISSET(nDeferredTaskEvent, &readfds)) {
+				int64_t inc;
+				err = read(nDeferredTaskEvent, &inc, sizeof(inc));
+				if(err == -1) {
 					err = errno;
-					LOGE("%s(%d): ioctl(QVID_IOC_USER_JOB_GET) failed, err=%d", __FUNCTION__, __LINE__, err);
+					LOGE("%s(%d): read() failed, err=%d", __FUNCTION__, __LINE__, err);
 					break;
 				}
 
-				switch(user_job.id) {
-				case QVIO_USER_JOB_ID_S_FMT:
-					VidUserJob_S_FMT(user_job, user_job_done);
-					break;
-
-				case QVIO_USER_JOB_ID_QUEUE_SETUP:
-					VidUserJob_QUEUE_SETUP(user_job, user_job_done);
-					break;
-
-				case QVIO_USER_JOB_ID_BUF_INIT:
-					VidUserJob_BUF_INIT(user_job, user_job_done);
-					break;
-
-				case QVIO_USER_JOB_ID_BUF_CLEANUP:
-					VidUserJob_BUF_CLEANUP(user_job, user_job_done);
-					break;
-
-				case QVIO_USER_JOB_ID_START_STREAMING:
-					VidUserJob_START_STREAMING(user_job, user_job_done);
-					break;
-
-				case QVIO_USER_JOB_ID_STOP_STREAMING:
-					VidUserJob_STOP_STREAMING(user_job, user_job_done);
-					break;
-
-				case QVIO_USER_JOB_ID_BUF_DONE:
-					VidUserJob_BUF_DONE(user_job, user_job_done);
-					break;
-
-				default:
-					VidUserJob_ERROR(user_job, user_job_done);
-					break;
-				}
-
-				user_job_done.id = user_job.id;
-				user_job_done.sequence = user_job.sequence;
-
-#if 1
-				err = ioctl(nVidCtrlFd, QVID_IOC_USER_JOB_DONE, &user_job_done);
-				if(err) {
+				if(err != sizeof(inc)) {
 					err = errno;
-					LOGE("%s(%d): ioctl(QVID_IOC_USER_JOB_DONE) failed, err=%d", __FUNCTION__, __LINE__, err);
+					LOGE("%s(%d): read() failed, err=%d", __FUNCTION__, __LINE__, err);
 					break;
 				}
-#endif
 
-				if(oDeferred) {
-					oDeferred();
-					oDeferred = nullptr;
+				std::unique_lock<std::mutex> lck (oDeferredTasksMutex, std::defer_lock);
+				std::function<void ()> fn;
+
+				lck.lock();
+				switch(1) { case 1:
+					if(oDeferredTasks.empty()) {
+						LOGW("%s(%d): unexpected, oDeferredTasks.empty(), stopping...", __FUNCTION__, __LINE__);
+						break;
+					}
+
+					fn = oDeferredTasks.front();
+					oDeferredTasks.pop_front();
 				}
+				lck.unlock();
+
+				if(! fn)
+					break;
+
+				fn();
 			}
 		}
 
-		LOGD("%s(%d):---", __FUNCTION__, __LINE__);
+		LOGD("---%s", __FUNCTION__);
+	}
+
+	void App::AddDefer(std::function<void ()> fn) {
+		int err;
+		std::unique_lock<std::mutex> lck (oDeferredTasksMutex, std::defer_lock);
+
+		lck.lock();
+
+		switch(1) { case 1:
+			oDeferredTasks.push_back(fn);
+
+			// wake oDeferredTasks up
+			int64_t inc = 1;
+			err = write(nDeferredTaskEvent, &inc, sizeof(inc));
+			if(err == -1) {
+				err = errno;
+				LOGE("%s(%d): write() failed, err=%d", __FUNCTION__, __LINE__, err);
+				break;
+			}
+
+			if(err != sizeof(inc)) {
+				err = errno;
+				LOGE("%s(%d): write() failed, err=%d", __FUNCTION__, __LINE__, err);
+				break;
+			}
+		}
+
+		lck.unlock();
 	}
 
 	void App::VidUserJob_S_FMT(const qvio_user_job& user_job, qvio_user_job_done& user_job_done) {
@@ -773,27 +901,6 @@ namespace __03_qvio_ctl__ {
 
 		int nNumBuffers = (int)user_job.u.queue_setup.num_buffers;
 		switch(1) { case 1:
-			if(! oMbuffers.empty()) {
-				for(int i = 0;i < nNumBuffers;i++) {
-					mmap_buffer& mbuffer = oMbuffers[i];
-
-					for(int p = 0;p < 4;p++) {
-						if(mbuffer.pVirAddr[p] && mbuffer.nLength[p]) {
-							err = munmap((void*)mbuffer.pVirAddr[p], mbuffer.nLength[p]);
-							if(err) {
-								err = errno;
-								LOGE("%s(%d): munmap() failed, err=%d", __FUNCTION__, __LINE__, err);
-							}
-
-						}
-					}
-
-					memset(&mbuffer, 0, sizeof(mmap_buffer));
-				}
-
-				oMbuffers.clear();
-			}
-
 			oMbuffers.resize(nNumBuffers);
 
 			for(int i = 0;i < nNumBuffers;i++) {
@@ -812,7 +919,9 @@ namespace __03_qvio_ctl__ {
 #if 1
 		int nIndex = (int)user_job.u.buf_init.index;
 		if(nIndex >= 0 && nIndex < oMbuffers.size()) {
-			oDeferred = [&, nIndex]() {
+			AddDefer([&, nIndex]() {
+				LOGD("VIDIOC_QUERYBUF(%d)...", nIndex);
+
 				v4l2_buffer buffer;
 				memset(&buffer, 0, sizeof(v4l2_buffer));
 				buffer.index = nIndex;
@@ -844,7 +953,7 @@ namespace __03_qvio_ctl__ {
 
 				LOGD("BUFFER[%d]: mmap [%p %d]",
 					buffer.index, mbuffer.pVirAddr[0], mbuffer.nLength[0]);
-			};
+			});
 		}
 #endif
 	}
@@ -857,7 +966,9 @@ namespace __03_qvio_ctl__ {
 #if 1
 		int nIndex = (int)user_job.u.buf_init.index;
 		if(nIndex >= 0 && nIndex < oMbuffers.size()) {
-			oDeferred = [&, nIndex]() {
+			AddDefer([&, nIndex]() {
+				LOGD("munmap BUFFER(%d)...", nIndex);
+
 				mmap_buffer& mbuffer = oMbuffers[nIndex];
 
 				for(int p = 0;p < 4;p++) {
@@ -874,7 +985,7 @@ namespace __03_qvio_ctl__ {
 				}
 
 				memset(&mbuffer, 0, sizeof(mmap_buffer));
-			};
+			});
 		}
 #endif
 	}
