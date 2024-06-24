@@ -14,6 +14,7 @@
 #include <linux/media.h>
 #include <linux/version.h>
 #include <vector>
+#include <functional>
 
 #include "qvio.h"
 
@@ -68,6 +69,17 @@ namespace __03_qvio_ctl__ {
 		void VidWaitForBuffer();
 		void VidBufDone(int count);
 		void VidUserJobHandling();
+
+		v4l2_format oCurrentFormat;
+		std::function<void ()> oDeferred; // defer function after done-ioctl
+		void VidUserJob_S_FMT(const qvio_user_job& user_job, qvio_user_job_done& user_job_done);
+		void VidUserJob_QUEUE_SETUP(const qvio_user_job& user_job, qvio_user_job_done& user_job_done);
+		void VidUserJob_BUF_INIT(const qvio_user_job& user_job, qvio_user_job_done& user_job_done);
+		void VidUserJob_BUF_CLEANUP(const qvio_user_job& user_job, qvio_user_job_done& user_job_done);
+		void VidUserJob_START_STREAMING(const qvio_user_job& user_job, qvio_user_job_done& user_job_done);
+		void VidUserJob_STOP_STREAMING(const qvio_user_job& user_job, qvio_user_job_done& user_job_done);
+		void VidUserJob_BUF_DONE(const qvio_user_job& user_job, qvio_user_job_done& user_job_done);
+		void VidUserJob_ERROR(const qvio_user_job& user_job, qvio_user_job_done& user_job_done);
 	};
 
 	App::App(int argc, char **argv) : argc(argc), argv(argv) {
@@ -351,7 +363,7 @@ namespace __03_qvio_ctl__ {
 		LOGD("%s(%d):...", __FUNCTION__, __LINE__);
 
 		switch(1) { case 1:
-			for(int i = 0;i < nBuffers;i++) {
+			for(int i = 0;;i++) {
 				v4l2_buffer buffer;
 				memset(&buffer, 0, sizeof(v4l2_buffer));
 				buffer.index = i;
@@ -380,7 +392,7 @@ namespace __03_qvio_ctl__ {
 				break;
 			}
 
-			for(int i = 0;i < nBuffers;i++) {
+			for(int i = 0;;i++) {
 				v4l2_buffer buffer;
 				memset(&buffer, 0, sizeof(v4l2_buffer));
 				buffer.index = i;
@@ -418,7 +430,7 @@ namespace __03_qvio_ctl__ {
 
 				oMbuffers.push_back(mbuffer);
 
-				LOGD("BUFFER[%d]: length=%d [%p %d]",
+				LOGD("BUFFER[%d]: length=%d [%d %p]",
 					buffer.index, buffer.length, buffer.m.offset, mbuffer.pVirAddr[0]);
 			}
 		}
@@ -679,78 +691,53 @@ namespace __03_qvio_ctl__ {
 
 			if (FD_ISSET(nVidCtrlFd, &readfds)) {
 				qvio_user_job user_job;
+				qvio_user_job_done user_job_done;
 
-#if 1
-				ssize_t ret = read(nVidCtrlFd, &user_job, sizeof(qvio_user_job));
-				if(ret != sizeof(qvio_user_job)) {
-					err = errno;
-					LOGE("%s(%d): read() failed, ret=%d, err=%d", __FUNCTION__, __LINE__, ret, err);
-					break;
-				}
-#else
 				err = ioctl(nVidCtrlFd, QVID_IOC_USER_JOB_GET, &user_job);
 				if(err) {
 					err = errno;
 					LOGE("%s(%d): ioctl(QVID_IOC_USER_JOB_GET) failed, err=%d", __FUNCTION__, __LINE__, err);
 					break;
 				}
-#endif
 
 				switch(user_job.id) {
 				case QVIO_USER_JOB_ID_S_FMT:
-					LOGD("QVIO_USER_JOB_ID_S_FMT(%d): type=%d %dx%d %d", (int)user_job.sequence,
-						(int)user_job.u.s_fmt.format.type,
-						(int)user_job.u.s_fmt.format.fmt.pix.width,
-						(int)user_job.u.s_fmt.format.fmt.pix.height,
-						(int)user_job.u.s_fmt.format.fmt.pix.bytesperline);
+					VidUserJob_S_FMT(user_job, user_job_done);
 					break;
 
 				case QVIO_USER_JOB_ID_QUEUE_SETUP:
-					LOGD("QVIO_USER_JOB_ID_QUEUE_SETUP(%d): %d", (int)user_job.sequence,
-						(int)user_job.u.queue_setup.num_buffers);
+					VidUserJob_QUEUE_SETUP(user_job, user_job_done);
 					break;
 
 				case QVIO_USER_JOB_ID_BUF_INIT:
-					LOGD("QVIO_USER_JOB_ID_BUF_INIT(%d): %d", (int)user_job.sequence,
-						user_job.u.buf_init.index);
+					VidUserJob_BUF_INIT(user_job, user_job_done);
 					break;
 
 				case QVIO_USER_JOB_ID_BUF_CLEANUP:
-					LOGD("QVIO_USER_JOB_ID_BUF_CLEANUP(%d): %d", (int)user_job.sequence,
-						user_job.u.buf_cleanup.index);
+					VidUserJob_BUF_CLEANUP(user_job, user_job_done);
 					break;
 
 				case QVIO_USER_JOB_ID_START_STREAMING:
-					LOGD("QVIO_USER_JOB_ID_START_STREAMING(%d)", (int)user_job.sequence);
+					VidUserJob_START_STREAMING(user_job, user_job_done);
 					break;
 
 				case QVIO_USER_JOB_ID_STOP_STREAMING:
-					LOGD("QVIO_USER_JOB_ID_STOP_STREAMING(%d)", (int)user_job.sequence);
+					VidUserJob_STOP_STREAMING(user_job, user_job_done);
 					break;
 
 				case QVIO_USER_JOB_ID_BUF_DONE:
-					LOGD("QVIO_USER_JOB_ID_BUF_DONE(%d): %d", (int)user_job.sequence,
-						user_job.u.buf_done.index);
+					VidUserJob_BUF_DONE(user_job, user_job_done);
 					break;
 
 				default:
-					LOGW("user_job: %d, %d", (int)user_job.id, (int)user_job.sequence);
+					VidUserJob_ERROR(user_job, user_job_done);
 					break;
 				}
-
-				qvio_user_job_done user_job_done;
 
 				user_job_done.id = user_job.id;
 				user_job_done.sequence = user_job.sequence;
 
-#if 0
-				ret = write(nVidCtrlFd, &user_job_done, sizeof(qvio_user_job_done));
-				if(ret != sizeof(qvio_user_job_done)) {
-					err = errno;
-					LOGE("%s(%d): write() failed, ret=%d, err=%d", __FUNCTION__, __LINE__, ret, err);
-					break;
-				}
-#else
+#if 1
 				err = ioctl(nVidCtrlFd, QVID_IOC_USER_JOB_DONE, &user_job_done);
 				if(err) {
 					err = errno;
@@ -758,10 +745,162 @@ namespace __03_qvio_ctl__ {
 					break;
 				}
 #endif
+
+				if(oDeferred) {
+					oDeferred();
+					oDeferred = nullptr;
+				}
 			}
 		}
 
 		LOGD("%s(%d):---", __FUNCTION__, __LINE__);
+	}
+
+	void App::VidUserJob_S_FMT(const qvio_user_job& user_job, qvio_user_job_done& user_job_done) {
+		LOGD("%s(%d): type=%d %dx%d %d", __FUNCTION__, (int)user_job.sequence,
+			(int)user_job.u.s_fmt.format.type,
+			(int)user_job.u.s_fmt.format.fmt.pix.width,
+			(int)user_job.u.s_fmt.format.fmt.pix.height,
+			(int)user_job.u.s_fmt.format.fmt.pix.bytesperline);
+
+		oCurrentFormat = user_job.u.s_fmt.format;
+	}
+
+	void App::VidUserJob_QUEUE_SETUP(const qvio_user_job& user_job, qvio_user_job_done& user_job_done) {
+		int err;
+
+		LOGD("%s(%d): num_buffers=%d", __FUNCTION__, (int)user_job.sequence, (int)user_job.u.queue_setup.num_buffers);
+
+		int nNumBuffers = (int)user_job.u.queue_setup.num_buffers;
+		switch(1) { case 1:
+			if(! oMbuffers.empty()) {
+				for(int i = 0;i < nNumBuffers;i++) {
+					mmap_buffer& mbuffer = oMbuffers[i];
+
+					for(int p = 0;p < 4;p++) {
+						if(mbuffer.pVirAddr[p] && mbuffer.nLength[p]) {
+							err = munmap((void*)mbuffer.pVirAddr[p], mbuffer.nLength[p]);
+							if(err) {
+								err = errno;
+								LOGE("%s(%d): munmap() failed, err=%d", __FUNCTION__, __LINE__, err);
+							}
+
+						}
+					}
+
+					memset(&mbuffer, 0, sizeof(mmap_buffer));
+				}
+
+				oMbuffers.clear();
+			}
+
+			oMbuffers.resize(nNumBuffers);
+
+			for(int i = 0;i < nNumBuffers;i++) {
+				mmap_buffer& buffer = oMbuffers[i];
+
+				memset(&buffer, 0, sizeof(mmap_buffer));
+			}
+		}
+	}
+
+	void App::VidUserJob_BUF_INIT(const qvio_user_job& user_job, qvio_user_job_done& user_job_done) {
+		int err;
+
+		LOGD("%s(%d): index=%d", __FUNCTION__, (int)user_job.sequence, user_job.u.buf_init.index);
+
+#if 1
+		int nIndex = (int)user_job.u.buf_init.index;
+		if(nIndex >= 0 && nIndex < oMbuffers.size()) {
+			oDeferred = [&, nIndex]() {
+				v4l2_buffer buffer;
+				memset(&buffer, 0, sizeof(v4l2_buffer));
+				buffer.index = nIndex;
+				buffer.type = nBufType;
+				buffer.memory = nMemory;
+				err = ioctl(nVidFd, VIDIOC_QUERYBUF, &buffer);
+				if(err) {
+					err = errno;
+					LOGE("%s(%d): ioctl(VIDIOC_QUERYBUF) failed, err=%d", __FUNCTION__, __LINE__, err);
+					return;
+				}
+
+				LOGD("BUFFER[%d]: length=%d offset=%d",
+					buffer.index, buffer.length, buffer.m.offset);
+
+				mmap_buffer& mbuffer = oMbuffers[nIndex];
+				memset(&mbuffer, 0, sizeof(mmap_buffer));
+
+				size_t nLength = (size_t)buffer.length;
+				void* pVirAddr = mmap(NULL, nLength, PROT_READ | PROT_WRITE, MAP_SHARED,
+					nVidFd, (off_t)buffer.m.offset);
+				if(pVirAddr == MAP_FAILED) {
+					LOGE("%s(%d): mmap() failed, err=%d", __FUNCTION__, __LINE__, err);
+					return;
+				}
+
+				mbuffer.pVirAddr[0] = (intptr_t)pVirAddr;
+				mbuffer.nLength[0] = buffer.length;
+
+				LOGD("BUFFER[%d]: mmap [%p %d]",
+					buffer.index, mbuffer.pVirAddr[0], mbuffer.nLength[0]);
+			};
+		}
+#endif
+	}
+
+	void App::VidUserJob_BUF_CLEANUP(const qvio_user_job& user_job, qvio_user_job_done& user_job_done) {
+		int err;
+
+		LOGD("%s(%d): index=%d", __FUNCTION__, (int)user_job.sequence, user_job.u.buf_cleanup.index);
+
+#if 1
+		int nIndex = (int)user_job.u.buf_init.index;
+		if(nIndex >= 0 && nIndex < oMbuffers.size()) {
+			oDeferred = [&, nIndex]() {
+				mmap_buffer& mbuffer = oMbuffers[nIndex];
+
+				for(int p = 0;p < 4;p++) {
+					if(mbuffer.pVirAddr[p] && mbuffer.nLength[p]) {
+						LOGD("BUFFER[%d]: munmap p=%d [%p %d]",
+							nIndex, p, mbuffer.pVirAddr[p], mbuffer.nLength[p]);
+
+						err = munmap((void*)mbuffer.pVirAddr[p], mbuffer.nLength[p]);
+						if(err) {
+							err = errno;
+							LOGE("%s(%d): munmap() failed, err=%d", __FUNCTION__, __LINE__, err);
+						}
+					}
+				}
+
+				memset(&mbuffer, 0, sizeof(mmap_buffer));
+			};
+		}
+#endif
+	}
+
+	void App::VidUserJob_START_STREAMING(const qvio_user_job& user_job, qvio_user_job_done& user_job_done) {
+		LOGD("%s(%d): ", __FUNCTION__, (int)user_job.sequence);
+	}
+
+	void App::VidUserJob_STOP_STREAMING(const qvio_user_job& user_job, qvio_user_job_done& user_job_done) {
+		LOGD("%s(%d): ", __FUNCTION__, (int)user_job.sequence);
+	}
+
+	void App::VidUserJob_BUF_DONE(const qvio_user_job& user_job, qvio_user_job_done& user_job_done) {
+		LOGD("%s(%d): index=%d", __FUNCTION__, (int)user_job.sequence, user_job.u.buf_done.index);
+
+		int nIndex = (int)user_job.u.buf_done.index;
+		if(nIndex >= 0 && nIndex < oMbuffers.size()) switch(1) { case 1:
+			mmap_buffer& mbuffer = oMbuffers[nIndex];
+
+			LOGD("BUFFER[%d]: [%p %d]",
+				nIndex, mbuffer.pVirAddr[0], mbuffer.nLength[0]);
+		}
+	}
+
+	void App::VidUserJob_ERROR(const qvio_user_job& user_job, qvio_user_job_done& user_job_done) {
+		LOGD("%s(%d): id=%d", __FUNCTION__, (int)user_job.sequence, (int)user_job.id);
 	}
 }
 

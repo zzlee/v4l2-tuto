@@ -75,7 +75,11 @@ static int qvio_queue_setup(struct vb2_queue *queue,
 		break;
 	}
 
-	qvio_user_job_queue_setup(&device->user_job, *num_buffers);
+	err = qvio_user_job_queue_setup(&device->user_job, *num_buffers);
+	if(err) {
+		pr_warn("qvio_user_job_queue_setup() failed, err=%d", err);
+	}
+	err = 0;
 
 	pr_info("-param %d %d [%d %d]\n", *num_buffers, *num_planes, sizes[0], sizes[1]);
 
@@ -96,20 +100,10 @@ static int qvio_buf_init(struct vb2_buffer *buffer) {
 
 	err = qvio_user_job_buf_init(&device->user_job, buffer);
 	if(err) {
-		pr_err("qvio_user_job_buf_init() failed, err=%d\n", err);
-		goto err0;
+		pr_warn("qvio_user_job_buf_init() failed, err=%d", err);
 	}
-
-	pr_info("device->user_job.current_user_job_done.u.buf_init.dma_buf=%d",
-		device->user_job.current_user_job_done.u.buf_init.dma_buf);
-	buf->dma_buf = device->user_job.current_user_job_done.u.buf_init.dma_buf;
-	// TODO: attach dma_buf
-
 	err = 0;
 
-	return err;
-
-err0:
 	return err;
 }
 
@@ -124,16 +118,11 @@ static void qvio_buf_cleanup(struct vb2_buffer *buffer) {
 
 	err = qvio_user_job_buf_cleanup(&device->user_job, buffer);
 	if(err) {
-		pr_err("qvio_user_job_buf_init() failed, err=%d\n", err);
-		goto err0;
+		pr_warn("qvio_user_job_buf_cleanup() failed, err=%d", err);
 	}
-
-	pr_info("buf->dma_buf=%d", buf->dma_buf);
-	// TODO: detach dma_buf
+	err = 0;
 
 	return;
-
-err0:
 }
 
 static int qvio_buf_prepare(struct vb2_buffer *buffer) {
@@ -240,7 +229,11 @@ static int qvio_start_streaming(struct vb2_queue *queue, unsigned int count) {
 
 	pr_info("\n");
 
-	qvio_user_job_start_streaming(&device->user_job);
+	err = qvio_user_job_start_streaming(&device->user_job);
+	if(err) {
+		pr_warn("qvio_user_job_start_streaming() failed, err=%d", err);
+	}
+	err = 0;
 
 	self->sequence = 0;
 	err = 0;
@@ -249,12 +242,17 @@ static int qvio_start_streaming(struct vb2_queue *queue, unsigned int count) {
 }
 
 static void qvio_stop_streaming(struct vb2_queue *queue) {
+	int err;
 	struct qvio_queue* self = container_of(queue, struct qvio_queue, queue);
 	struct qvio_device* device = container_of(self, struct qvio_device, queue);
 
 	pr_info("\n");
 
-	qvio_user_job_stop_streaming(&device->user_job);
+	err = qvio_user_job_stop_streaming(&device->user_job);
+	if(err) {
+		pr_warn("qvio_user_job_stop_streaming() failed, err=%d", err);
+	}
+	err = 0;
 
 	if (!mutex_lock_interruptible(&self->buffers_mutex)) {
 		struct qvio_queue_buffer* buf;
@@ -362,7 +360,11 @@ int qvio_queue_try_buf_done(struct qvio_queue* self) {
 
 	pr_info("vb2_buffer_done: %p %d\n", buf, buf->vb.vb2_buf.index);
 
-	qvio_user_job_buf_done(&device->user_job, &buf->vb.vb2_buf);
+	err = qvio_user_job_buf_done(&device->user_job, &buf->vb.vb2_buf);
+	if(err) {
+		pr_warn("qvio_user_job_buf_done() failed, err=%d", err);
+	}
+	err = 0;
 
 	vb2_buffer_done(&buf->vb.vb2_buf, VB2_BUF_STATE_DONE);
 

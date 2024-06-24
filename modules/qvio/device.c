@@ -155,6 +155,7 @@ static void qvio_device_free(struct kref *ref)
 
 	pr_info("\n");
 
+	qvio_user_job_uninit(&self->user_job);
 	kfree(self);
 }
 
@@ -304,14 +305,18 @@ int qvio_device_s_fmt(struct qvio_device* self, struct v4l2_format *format) {
 		goto err0;
 	}
 
-	qvio_user_job_s_fmt(&self->user_job, format);
-
 	memcpy(&self->current_format, format, sizeof(struct v4l2_format));
 	err = qvio_queue_s_fmt(&self->queue, format);
 	if(err) {
 		pr_err("qvio_queue_s_fmt() failed, err=%d", err);
 		goto err0;
 	}
+
+	err = qvio_user_job_s_fmt(&self->user_job, format);
+	if(err) {
+		pr_warn("qvio_user_job_s_fmt() failed, err=%d", err);
+	}
+	err = 0;
 
 	return err;
 
@@ -346,6 +351,8 @@ int qvio_device_enum_fmt(struct qvio_device* self, struct v4l2_fmtdesc *format) 
 		goto err0;
 		break;
 	}
+
+	err = 0;
 
 	return err;
 
@@ -409,6 +416,8 @@ int qvio_device_try_fmt(struct qvio_device* self, struct v4l2_format *format) {
 
 	default:
 		pr_err("unexpected value, self->buffer_type=%d\n", (int)self->buffer_type);
+		err = EINVAL;
+
 		goto err0;
 		break;
 	}
@@ -698,7 +707,6 @@ int qvio_device_enum_frameintervals(struct qvio_device* self, struct v4l2_frmiva
 
 	return err;
 }
-
 
 long qvio_device_buf_done(struct qvio_device* self) {
 	long ret;

@@ -5,29 +5,33 @@
 #include <linux/videodev2.h>
 #include <media/videobuf2-core.h>
 #include <linux/fs.h>
+#include <linux/list.h>
+#include <linux/spinlock_types.h>
 
 #include "uapi/qvio.h"
 
 struct qvio_user_job_dev {
-	wait_queue_head_t user_job_wq;
-	atomic_t user_job_wq_event;
-	__u32 last_user_job_wq_event;
 	atomic_t user_job_sequence;
-	struct qvio_user_job current_user_job;
+
+	// user-job list
+	wait_queue_head_t user_job_wq;
+	spinlock_t user_job_list_lock;
+	struct list_head user_job_list;
+
+	// user-job-done lsit
 	wait_queue_head_t user_job_done_wq;
-	atomic_t user_job_done_wq_event;
-	struct qvio_user_job_done current_user_job_done;
+	spinlock_t user_job_done_list_lock;
+	struct list_head user_job_done_list;
 };
 
 void qvio_user_job_init(struct qvio_user_job_dev* self);
+void qvio_user_job_uninit(struct qvio_user_job_dev* self);
 
 // proprietary v4l2 ioctl
 long qvio_user_job_ioctl_get(struct qvio_user_job_dev* self, unsigned long arg);
 long qvio_user_job_ioctl_done(struct qvio_user_job_dev* self, unsigned long arg);
 
 // proprietary file ops
-ssize_t qvio_user_job_read(struct qvio_user_job_dev* self, struct file *filp, char *buf, size_t size, loff_t *f_pos);
-ssize_t qvio_user_job_write(struct qvio_user_job_dev* self, struct file *filp, const char *buf, size_t size, loff_t *f_pos);
 __poll_t qvio_user_job_poll(struct qvio_user_job_dev* self, struct file *filp, struct poll_table_struct *wait);
 
 // user-job
