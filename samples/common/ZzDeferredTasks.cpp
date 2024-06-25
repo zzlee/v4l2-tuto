@@ -33,8 +33,8 @@ int ZzDeferredTasks::Start() {
 		};
 		err = 0;
 
-		std::thread oThread(std::bind(&self_t::Main, this));
-		mThread.swap(oThread);
+		std::thread t(std::bind(&self_t::Main, this));
+		mThread.swap(t);
 		mFreeStack += [&]() {
 			int err;
 

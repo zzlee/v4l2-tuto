@@ -25,7 +25,26 @@
 
 #include "qvio.h"
 
+#if BUILD_WITH_CUDA
+#include <cuda.h>
+#include <cuda_runtime_api.h>
+#include <cudaEGL.h>
+#endif // BUILD_WITH_CUDA
+
+#if BUILD_WITH_NPP
+#include <npp.h>
+#include <nppi.h>
+#include <npps.h>
+#endif // BUILD_WITH_NPP
+
+#if BUILD_WITH_NVBUF
+#include <nvbufsurface.h>
+#endif // BUILD_WITH_NVBUF
+
 ZZ_INIT_LOG("03_qvio-ctl")
+
+extern cudaError_t zppiYCbCr422_8u_C2P3R(
+	uchar1* pSrc, int srcStep, uchar1* pDst[3], int dstStep[3], int nWidth, int nHeight);
 
 namespace __03_qvio_ctl__ {
 
@@ -45,6 +64,22 @@ namespace __03_qvio_ctl__ {
 			int nLength[4];
 		};
 		std::vector<mmap_buffer> oMbuffers;
+
+		struct vpss_bufs {
+			// src
+			NvBufSurface* pSurface;
+			CUgraphicsResource cuResource;
+			CUeglFrame eglFrame;
+
+			// vpss
+			Npp8u* pSrc;
+			int nSrcStep;
+			Npp8u* pScaled;
+			int nScaledStep;
+			Npp8u* pScaled1;
+			int nScaled1Step;
+		};
+		vpss_bufs oVpssBufs;
 
 		App(int argc, char **argv);
 		~App();
@@ -71,7 +106,7 @@ namespace __03_qvio_ctl__ {
 		int nVidSrcFd;
 		v4l2_format oVidSrcFormat;
 		std::atomic<bool> bVidSrcDone;
-		std::shared_ptr<std::thread> pVidSrcThread;
+		std::thread oVidSrcThread;
 		std::vector<mmap_buffer> oSrcMbuffers;
 		std::mutex oSrcBufferQMutex;
 		std::deque<v4l2_buffer> oSrcBufferQ; // defer tasks for done-ioctl
@@ -192,6 +227,8 @@ namespace __03_qvio_ctl__ {
 		LOGD("%s(%d):+++", __FUNCTION__, __LINE__);
 
 		switch(1) { case 1:
+			cudaFree(NULL);
+
 			err = oDeferredTasks.Start();
 			if(err) {
 				LOGE("%s(%d): oDeferredTasks.Start() failed, err=%d", __FUNCTION__, __LINE__, err);
@@ -300,6 +337,13 @@ namespace __03_qvio_ctl__ {
 			(int)user_job.u.s_fmt.format.fmt.pix.bytesperline);
 
 		oVidDstFormat = user_job.u.s_fmt.format;
+
+		LOGD("oVidDstFormat: %dx%d 0x%X %d %d",
+			(int)oVidDstFormat.fmt.pix.width,
+			(int)oVidDstFormat.fmt.pix.height,
+			oVidDstFormat.fmt.pix.pixelformat,
+			(int)oVidDstFormat.fmt.pix.sizeimage,
+			(int)oVidDstFormat.fmt.pix.bytesperline);
 	}
 
 	void App::VidUserJob_QUEUE_SETUP(const qvio_user_job& user_job, qvio_user_job_done& user_job_done) {
@@ -308,11 +352,10 @@ namespace __03_qvio_ctl__ {
 		LOGD("%s(%d): num_buffers=%d", __FUNCTION__, (int)user_job.sequence, (int)user_job.u.queue_setup.num_buffers);
 
 		int nNumBuffers = (int)user_job.u.queue_setup.num_buffers;
-		switch(1) { case 1:
-			mmap_buffer mbuffer;
-			memset(&mbuffer, 0, sizeof(mmap_buffer));
-			oMbuffers.resize(nNumBuffers, mbuffer);
-		}
+
+		mmap_buffer mbuffer;
+		memset(&mbuffer, 0, sizeof(mmap_buffer));
+		oMbuffers.resize(nNumBuffers, mbuffer);
 	}
 
 	void App::VidUserJob_BUF_INIT(const qvio_user_job& user_job, qvio_user_job_done& user_job_done) {
@@ -401,7 +444,8 @@ namespace __03_qvio_ctl__ {
 
 		oDeferredTasks.AddTask([&]() {
 			bVidSrcDone.store(false);
-			pVidSrcThread.reset(new std::thread(std::bind(&App::VidSrc_Main, this)));
+			std::thread t(std::bind(&App::VidSrc_Main, this));
+			oVidSrcThread.swap(t);
 		});
 	}
 
@@ -410,36 +454,118 @@ namespace __03_qvio_ctl__ {
 
 		oDeferredTasks.AddTask([&]() {
 			bVidSrcDone.store(true);
-			if(pVidSrcThread) {
-				pVidSrcThread->join();
-				pVidSrcThread.reset();
-			}
+			oVidSrcThread.join();
 		});
 	}
 
 	void App::VidUserJob_BUF_DONE(const qvio_user_job& user_job, qvio_user_job_done& user_job_done) {
+		int err;
+		cudaError_t cuErr;
+		NppStatus nppErr;
+
+#if 0
 		LOGD("%s(%d): index=%d", __FUNCTION__, (int)user_job.sequence, user_job.u.buf_done.index);
+#endif
+
+		std::unique_lock<std::mutex> lck (oSrcBufferQMutex, std::defer_lock);
+		v4l2_buffer src_buffer;
+
+		lck.lock();
+		if(oSrcBufferQ.empty()) {
+			src_buffer.index = -1;
+		} else {
+			src_buffer = oSrcBufferQ.front();
+			oSrcBufferQ.pop_front();
+		}
+		lck.unlock();
 
 		int nIndex = (int)user_job.u.buf_done.index;
-		if(nIndex >= 0 && nIndex < oMbuffers.size()) switch(1) { case 1:
-			mmap_buffer& mbuffer = oMbuffers[nIndex];
+		if(nIndex >= 0 && nIndex < oMbuffers.size() &&
+			src_buffer.index >= 0 && src_buffer.index < oSrcMbuffers.size()) switch(1) { case 1:
+			mmap_buffer& mbuffer_dst = oMbuffers[nIndex];
+			mmap_buffer& mbuffer_src = oSrcMbuffers[src_buffer.index];
 
-			LOGD("BUFFER[%d]: [%p %d]",
-				nIndex, mbuffer.pVirAddr[0], mbuffer.nLength[0]);
+#if 0 // DEBUG
+			LOGD("SRC-BUFFER[%d] (%p %d) ==> BUFFER[%d] (%p %d)",
+				mbuffer_src.nIndex, mbuffer_src.pVirAddr[0], mbuffer_src.nLength[0],
+				mbuffer_dst.nIndex, mbuffer_dst.pVirAddr[0], mbuffer_dst.nLength[0]);
+#endif
 
-			std::unique_lock<std::mutex> lck (oSrcBufferQMutex, std::defer_lock);
-			v4l2_buffer buffer;
-
-			lck.lock();
-			if(oSrcBufferQ.empty()) {
-				buffer.index = -1;
-			} else {
-			 	buffer = oSrcBufferQ.front();
-			 	oSrcBufferQ.pop_front();
+			cuErr = cudaMemcpy2D((void*)oVpssBufs.eglFrame.frame.pPitch[0],
+				(int)oVpssBufs.pSurface->surfaceList[0].planeParams.pitch[0],
+				(const void*)mbuffer_src.pVirAddr[0], oVidSrcFormat.fmt.pix.bytesperline,
+				oVidSrcFormat.fmt.pix.width * 2, oVidSrcFormat.fmt.pix.height,
+				cudaMemcpyHostToDevice);
+			if(cuErr != cudaSuccess) {
+				LOGE("%s(%d): cudaMemcpy2D() failed, cuErr=%d", __FUNCTION__, __LINE__, cuErr);
+				break;
 			}
-			lck.unlock();
 
-			LOGD("SRC-BUFFER[%d]:...", buffer.index);
+			// TODO: YUY2(oVpssBufs.eglFrame.frame.pPitch[0]) -> YV12(oVpssBufs.pSrc)
+
+			// image resize
+			// YV12(oVpssBufs.pSrc) --> YV12(oVpssBufs.pScaled)
+			{
+				Npp8u* pSrc = oVpssBufs.pSrc;
+				Npp8u* pDst = oVpssBufs.pScaled;
+
+				NppiSize oSrcSize = { (int)oVidSrcFormat.fmt.pix.width, (int)oVidSrcFormat.fmt.pix.height };
+				NppiRect oSrcRectROI = { 0, 0, oSrcSize.width, oSrcSize.height };
+				NppiSize oDstSize = { (int)oVidDstFormat.fmt.pix.width, (int)oVidDstFormat.fmt.pix.height };
+				NppiRect oDstRectROI = { 0, 0, oDstSize.width, oDstSize.height };
+
+				nppErr = nppiResize_8u_C1R(pSrc, oVpssBufs.nSrcStep, oSrcSize, oSrcRectROI,
+					pDst, oVpssBufs.nScaledStep, oDstSize, oDstRectROI, NPPI_INTER_NN);
+				if(nppErr != NPP_SUCCESS) {
+					LOGE("%s(%d): nppiResize_8u_C1R() failed, nppErr=%d", __FUNCTION__, __LINE__, nppErr);
+					break;
+				}
+
+				pSrc += oSrcSize.height * oVpssBufs.nSrcStep;
+				pDst += oDstSize.height * oVpssBufs.nScaledStep;
+				oSrcSize.width /= 2, oSrcRectROI.height /= 2;
+				oDstSize.width /= 2, oDstRectROI.height /= 2;
+
+				nppErr = nppiResize_8u_C1R(pSrc, oVpssBufs.nSrcStep, oSrcSize, oSrcRectROI,
+					pDst, oVpssBufs.nScaledStep, oDstSize, oDstRectROI, NPPI_INTER_NN);
+				if(nppErr != NPP_SUCCESS) {
+					LOGE("%s(%d): nppiResize_8u_C1R() failed, nppErr=%d", __FUNCTION__, __LINE__, nppErr);
+					break;
+				}
+
+				pSrc += oSrcSize.height / 2 * oVpssBufs.nSrcStep;
+				pDst += oDstSize.height / 2 * oVpssBufs.nScaledStep;
+
+				nppErr = nppiResize_8u_C1R(pSrc, oVpssBufs.nSrcStep, oSrcSize, oSrcRectROI,
+					pDst, oVpssBufs.nScaledStep, oDstSize, oDstRectROI, NPPI_INTER_NN);
+				if(nppErr != NPP_SUCCESS) {
+					LOGE("%s(%d): nppiResize_8u_C1R() failed, nppErr=%d", __FUNCTION__, __LINE__, nppErr);
+					break;
+				}
+			}
+
+			// TODO: YV12(oVpssBufs.pScaled) -> NV12(oVpssBufs.pScaled1)
+
+			cuErr = cudaMemcpy2D((void*)mbuffer_dst.pVirAddr[0], oVidDstFormat.fmt.pix.bytesperline,
+				(const void*)oVpssBufs.pScaled1, (int)oVpssBufs.nScaled1Step,
+				oVidDstFormat.fmt.pix.width, oVidDstFormat.fmt.pix.height,
+				cudaMemcpyDeviceToHost);
+			if(cuErr != cudaSuccess) {
+				LOGE("%s(%d): cudaMemcpy2D() failed, cuErr=%d", __FUNCTION__, __LINE__, cuErr);
+				break;
+			}
+
+			cuErr = cudaMemcpy2D(
+				(void*)(mbuffer_dst.pVirAddr[0] + oVidDstFormat.fmt.pix.height * oVidDstFormat.fmt.pix.bytesperline),
+				oVidDstFormat.fmt.pix.bytesperline,
+				(const void*)(oVpssBufs.pScaled1 + oVidDstFormat.fmt.pix.height * oVpssBufs.nScaled1Step),
+				(int)oVpssBufs.nScaled1Step,
+				oVidDstFormat.fmt.pix.width, oVidDstFormat.fmt.pix.height / 2,
+				cudaMemcpyDeviceToHost);
+			if(cuErr != cudaSuccess) {
+				LOGE("%s(%d): cudaMemcpy2D() failed, cuErr=%d", __FUNCTION__, __LINE__, cuErr);
+				break;
+			}
 		}
 	}
 
@@ -449,8 +575,7 @@ namespace __03_qvio_ctl__ {
 
 	void App::VidSrc_Main() {
 		int err;
-		int nWidth = 1920;
-		int nHeight = 1080;
+		CUresult cuRes;
 		ZzUtils::FreeStack _FreeStack;
 
 		LOGD("+++%s", __FUNCTION__);
@@ -481,7 +606,7 @@ namespace __03_qvio_ctl__ {
 				break;
 			}
 
-			LOGD("-param: %dx%d 0x%X %d %d",
+			LOGD("oVidSrcFormat: %dx%d 0x%X %d %d",
 				(int)oVidSrcFormat.fmt.pix.width,
 				(int)oVidSrcFormat.fmt.pix.height,
 				oVidSrcFormat.fmt.pix.pixelformat,
@@ -529,8 +654,6 @@ namespace __03_qvio_ctl__ {
 				mmap_buffer& mbuffer = oSrcMbuffers[nIndex];
 				memset(&mbuffer, 0, sizeof(mmap_buffer));
 
-				mbuffer.nIndex = buffer.index;
-
 				size_t nLength = (size_t)buffer.length;
 				void* pVirAddr = mmap(NULL, nLength, PROT_READ | PROT_WRITE, MAP_SHARED,
 					nVidSrcFd, (off_t)buffer.m.offset);
@@ -557,8 +680,7 @@ namespace __03_qvio_ctl__ {
 					memset(&mbuffer, 0, sizeof(mmap_buffer));
 				};
 
-				memset(&mbuffer, 0, sizeof(mmap_buffer));
-
+				mbuffer.nIndex = buffer.index;
 				mbuffer.pVirAddr[0] = (intptr_t)pVirAddr;
 				mbuffer.nLength[0] = buffer.length;
 
@@ -576,6 +698,105 @@ namespace __03_qvio_ctl__ {
 					break;
 				}
 			}
+
+			cudaFree(NULL);
+
+			NvBufSurfaceCreateParams params;
+			memset(&params, 0, sizeof(params));
+			params.width = oVidSrcFormat.fmt.pix.width;
+			params.height = oVidSrcFormat.fmt.pix.height;
+			params.layout = NVBUF_LAYOUT_PITCH;
+			params.memType = NVBUF_MEM_DEFAULT;
+			params.gpuId = 0;
+			params.colorFormat = NVBUF_COLOR_FORMAT_YUYV;
+			err = NvBufSurfaceCreate(&oVpssBufs.pSurface, 1, &params);
+			if(err) {
+				err = errno;
+				LOGE("%s(%d): NvBufSurfaceCreate() failed, err=%d", __FUNCTION__, __LINE__, err);
+				break;
+			}
+			_FreeStack += [&]() {
+				int err;
+
+				err = NvBufSurfaceDestroy(oVpssBufs.pSurface);
+				if(err) {
+					err = errno;
+					LOGE("%s(%d): NvBufSurfaceDestroy() failed, err=%d", __FUNCTION__, __LINE__, err);
+				}
+			};
+
+			oVpssBufs.pSurface->numFilled = 1;
+
+			err = NvBufSurfaceMapEglImage(oVpssBufs.pSurface, -1);
+			if(err) {
+				err = errno;
+				LOGE("%s(%d): NvBufSurfaceMapEglImage() failed, err=%d", __FUNCTION__, __LINE__, err);
+				break;
+			}
+			_FreeStack += [&]() {
+				int err;
+
+				err = NvBufSurfaceUnMapEglImage(oVpssBufs.pSurface, -1);
+				if(err) {
+					err = errno;
+					LOGE("%s(%d): NvBufSurfaceUnMapEglImage() failed, err=%d", __FUNCTION__, __LINE__, err);
+				}
+			};
+
+			cuRes = cuGraphicsEGLRegisterImage(&oVpssBufs.cuResource,
+				(EGLImageKHR)oVpssBufs.pSurface->surfaceList[0].mappedAddr.eglImage,
+				CU_GRAPHICS_MAP_RESOURCE_FLAGS_NONE);
+			if(cuRes != CUDA_SUCCESS) {
+				LOGE("%s(%d): cuGraphicsEGLRegisterImage() failed, cuRes=%d", __FUNCTION__, __LINE__, cuRes);
+				break;
+			}
+			_FreeStack += [&]() {
+				cuRes = cuGraphicsUnregisterResource(oVpssBufs.cuResource);
+				if(cuRes != CUDA_SUCCESS) {
+					LOGE("%s(%d): cuGraphicsUnregisterResource() failed, cuRes=%d", __FUNCTION__, __LINE__, cuRes);
+				}
+			};
+
+			cuRes = cuGraphicsResourceGetMappedEglFrame(&oVpssBufs.eglFrame, oVpssBufs.cuResource, 0, 0);
+			if(cuRes != CUDA_SUCCESS) {
+				LOGE("%s(%d): cuGraphicsResourceGetMappedEglFrame() failed, cuRes=%d", __FUNCTION__, __LINE__, cuRes);
+				break;
+			}
+
+#if 0 // DEBUG
+			LOGD("eglFrame: (%p/%p %d/%d)",
+				(uintptr_t)oVpssBufs.eglFrame.frame.pPitch[0],
+				(uintptr_t)oVpssBufs.eglFrame.frame.pPitch[1],
+				(int)oVpssBufs.pSurface->surfaceList[0].planeParams.pitch[0],
+				(int)oVpssBufs.pSurface->surfaceList[0].planeParams.pitch[1]);
+#endif
+
+			oVpssBufs.pSrc = nppiMalloc_8u_C1(oVidSrcFormat.fmt.pix.width, oVidSrcFormat.fmt.pix.height * 2, &oVpssBufs.nSrcStep);
+			if(! oVpssBufs.pSrc) {
+				LOGE("%s(%d): nppiMalloc_8u_C1() failed", __FUNCTION__, __LINE__);
+				break;
+			}
+			_FreeStack += [&]() {
+				nppiFree(oVpssBufs.pSrc);
+			};
+
+			oVpssBufs.pScaled = nppiMalloc_8u_C1(oVidDstFormat.fmt.pix.width, oVidDstFormat.fmt.pix.height * 2, &oVpssBufs.nScaledStep);
+			if(! oVpssBufs.pScaled) {
+				LOGE("%s(%d): nppiMalloc_8u_C1() failed", __FUNCTION__, __LINE__);
+				break;
+			}
+			_FreeStack += [&]() {
+				nppiFree(oVpssBufs.pScaled);
+			};
+
+			oVpssBufs.pScaled1 = nppiMalloc_8u_C1(oVidDstFormat.fmt.pix.width, oVidDstFormat.fmt.pix.height * 3 / 2, &oVpssBufs.nScaled1Step);
+			if(! oVpssBufs.pScaled1) {
+				LOGE("%s(%d): nppiMalloc_8u_C1() failed", __FUNCTION__, __LINE__);
+				break;
+			}
+			_FreeStack += [&]() {
+				nppiFree(oVpssBufs.pScaled1);
+			};
 
 			__u32 buf_type = oVidSrcFormat.type;
 			err = ioctl(nVidSrcFd, VIDIOC_STREAMON, &buf_type);
