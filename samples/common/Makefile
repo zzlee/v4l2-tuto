@@ -7,7 +7,7 @@ OBJS:= $(SRCS:.cpp=.cpp.o)
 all: $(OBJS)
 
 %.cpp.o: %.cpp
-	@echo "Compiling: $<"
+	@echo "CXX: $< ==> $@"
 	$(AT)$(CXX) $(CXXFLAGS) -fPIC -c $< -o $@
 
 clean:

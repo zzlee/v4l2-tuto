@@ -1,5 +1,6 @@
 #include "ZzLog.h"
 #include "ZzUtils.h"
+#include "ZzDeferredTasks.h"
 
 #include <stdio.h>
 #include <string.h>
@@ -13,7 +14,6 @@
 #include <linux/videodev2.h>
 #include <linux/media.h>
 #include <linux/version.h>
-#include <sys/eventfd.h>
 
 #include <vector>
 #include <functional>
@@ -46,11 +46,6 @@ namespace __03_qvio_ctl__ {
 		};
 		std::vector<mmap_buffer> oMbuffers;
 
-		struct exp_buffer {
-			int nFd[4];
-		};
-		std::vector<exp_buffer> oDmaBufs;
-
 		App(int argc, char **argv);
 		~App();
 
@@ -59,15 +54,10 @@ namespace __03_qvio_ctl__ {
 		void OpenVidRx();
 
 		// user job handling
+		v4l2_format oVidDstFormat;
+		ZzDeferredTasks oDeferredTasks;
+
 		void VidUserJobHandling();
-
-		v4l2_format oCurrentFormat;
-		int nDeferredTaskEvent;
-		std::mutex oDeferredTasksMutex;
-		std::deque<std::function<void ()> > oDeferredTasks; // defer tasks for done-ioctl
-
-		void VidDeferred_Main();
-		void AddDeferredTask(std::function<void ()> fn);
 		void VidUserJob_S_FMT(const qvio_user_job& user_job, qvio_user_job_done& user_job_done);
 		void VidUserJob_QUEUE_SETUP(const qvio_user_job& user_job, qvio_user_job_done& user_job_done);
 		void VidUserJob_BUF_INIT(const qvio_user_job& user_job, qvio_user_job_done& user_job_done);
@@ -79,6 +69,7 @@ namespace __03_qvio_ctl__ {
 
 		// video source
 		int nVidSrcFd;
+		v4l2_format oVidSrcFormat;
 		std::atomic<bool> bVidSrcDone;
 		std::shared_ptr<std::thread> pVidSrcThread;
 		std::vector<mmap_buffer> oSrcMbuffers;
@@ -107,6 +98,13 @@ namespace __03_qvio_ctl__ {
 
 			nMemory = V4L2_MEMORY_MMAP;
 			nBufType = V4L2_BUF_TYPE_VIDEO_CAPTURE;
+
+			memset(&oVidSrcFormat, 0, sizeof(v4l2_format));
+			oVidSrcFormat.type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
+			oVidSrcFormat.fmt.pix.width = 1920;
+			oVidSrcFormat.fmt.pix.height = 1080;
+			oVidSrcFormat.fmt.pix.pixelformat = V4L2_PIX_FMT_YUYV;
+			oVidSrcFormat.fmt.pix.field = V4L2_FIELD_NONE;
 
 			ZzUtils::TestLoop([&](int ch) -> int {
 				int err = 0;
@@ -194,15 +192,11 @@ namespace __03_qvio_ctl__ {
 		LOGD("%s(%d):+++", __FUNCTION__, __LINE__);
 
 		switch(1) { case 1:
-			err = eventfd(0, EFD_SEMAPHORE | EFD_NONBLOCK);
-			if(err < 0) {
-				err = errno;
-				LOGE("%s(%d): eventfd() failed, err=%d", __FUNCTION__, __LINE__, err);
+			err = oDeferredTasks.Start();
+			if(err) {
+				LOGE("%s(%d): oDeferredTasks.Start() failed, err=%d", __FUNCTION__, __LINE__, err);
 				break;
 			}
-			nDeferredTaskEvent = err;
-
-			std::thread oDeferredThread(std::bind(&App::VidDeferred_Main, this));
 
 			int fd_stdin = 0; // stdin
 
@@ -218,7 +212,7 @@ namespace __03_qvio_ctl__ {
 
 				err = select(fd_max + 1, &readfds, NULL, NULL, NULL);
 				if (err < 0) {
-					LOGE("%s(%d): select() failed! err = %d", __FUNCTION__, __LINE__, err);
+					LOGE("%s(%d): select() failed! err=%d", __FUNCTION__, __LINE__, err);
 					break;
 				}
 
@@ -292,117 +286,10 @@ namespace __03_qvio_ctl__ {
 				}
 			}
 
-			// notify oDeferredThread to stop
-			int64_t inc = 1;
-			err = write(nDeferredTaskEvent, &inc, sizeof(inc));
-			if(err == -1) {
-				err = errno;
-				LOGE("%s(%d): write() failed, err=%d", __FUNCTION__, __LINE__, err);
-				break;
-			}
-
-			if(err != sizeof(inc)) {
-				err = errno;
-				LOGE("%s(%d): write() failed, err=%d", __FUNCTION__, __LINE__, err);
-				break;
-			}
-
-			oDeferredThread.join();
-		}
-
-		if(nDeferredTaskEvent != -1) {
-			close(nDeferredTaskEvent);
-			nDeferredTaskEvent = -1;
+			oDeferredTasks.Stop();
 		}
 
 		LOGD("%s(%d):---", __FUNCTION__, __LINE__);
-	}
-
-	void App::VidDeferred_Main() {
-		int err;
-
-		LOGD("+++%s", __FUNCTION__);
-
-		while(true) {
-			fd_set readfds;
-			FD_ZERO(&readfds);
-
-			int fd_max = -1;
-			if(nDeferredTaskEvent > fd_max) fd_max = nDeferredTaskEvent;
-			FD_SET(nDeferredTaskEvent, &readfds);
-
-			err = select(fd_max + 1, &readfds, NULL, NULL, NULL);
-			if (err < 0) {
-				LOGE("%s(%d): select() failed! err = %d", __FUNCTION__, __LINE__, err);
-				break;
-			}
-
-			if (FD_ISSET(nDeferredTaskEvent, &readfds)) {
-				int64_t inc;
-				err = read(nDeferredTaskEvent, &inc, sizeof(inc));
-				if(err == -1) {
-					err = errno;
-					LOGE("%s(%d): read() failed, err=%d", __FUNCTION__, __LINE__, err);
-					break;
-				}
-
-				if(err != sizeof(inc)) {
-					err = errno;
-					LOGE("%s(%d): read() failed, err=%d", __FUNCTION__, __LINE__, err);
-					break;
-				}
-
-				std::unique_lock<std::mutex> lck (oDeferredTasksMutex, std::defer_lock);
-				std::function<void ()> fn;
-
-				lck.lock();
-				switch(1) { case 1:
-					if(oDeferredTasks.empty()) {
-						LOGW("%s(%d): unexpected, oDeferredTasks.empty(), stopping...", __FUNCTION__, __LINE__);
-						break;
-					}
-
-					fn = oDeferredTasks.front();
-					oDeferredTasks.pop_front();
-				}
-				lck.unlock();
-
-				if(! fn)
-					break;
-
-				fn();
-			}
-		}
-
-		LOGD("---%s", __FUNCTION__);
-	}
-
-	void App::AddDeferredTask(std::function<void ()> fn) {
-		int err;
-		std::unique_lock<std::mutex> lck (oDeferredTasksMutex, std::defer_lock);
-
-		lck.lock();
-
-		switch(1) { case 1:
-			oDeferredTasks.push_back(fn);
-
-			// wake oDeferredTasks up
-			int64_t inc = 1;
-			err = write(nDeferredTaskEvent, &inc, sizeof(inc));
-			if(err == -1) {
-				err = errno;
-				LOGE("%s(%d): write() failed, err=%d", __FUNCTION__, __LINE__, err);
-				break;
-			}
-
-			if(err != sizeof(inc)) {
-				err = errno;
-				LOGE("%s(%d): write() failed, err=%d", __FUNCTION__, __LINE__, err);
-				break;
-			}
-		}
-
-		lck.unlock();
 	}
 
 	void App::VidUserJob_S_FMT(const qvio_user_job& user_job, qvio_user_job_done& user_job_done) {
@@ -412,7 +299,7 @@ namespace __03_qvio_ctl__ {
 			(int)user_job.u.s_fmt.format.fmt.pix.height,
 			(int)user_job.u.s_fmt.format.fmt.pix.bytesperline);
 
-		oCurrentFormat = user_job.u.s_fmt.format;
+		oVidDstFormat = user_job.u.s_fmt.format;
 	}
 
 	void App::VidUserJob_QUEUE_SETUP(const qvio_user_job& user_job, qvio_user_job_done& user_job_done) {
@@ -422,13 +309,9 @@ namespace __03_qvio_ctl__ {
 
 		int nNumBuffers = (int)user_job.u.queue_setup.num_buffers;
 		switch(1) { case 1:
-			oMbuffers.resize(nNumBuffers);
-
-			for(int i = 0;i < nNumBuffers;i++) {
-				mmap_buffer& buffer = oMbuffers[i];
-
-				memset(&buffer, 0, sizeof(mmap_buffer));
-			}
+			mmap_buffer mbuffer;
+			memset(&mbuffer, 0, sizeof(mmap_buffer));
+			oMbuffers.resize(nNumBuffers, mbuffer);
 		}
 	}
 
@@ -440,7 +323,7 @@ namespace __03_qvio_ctl__ {
 #if 1
 		int nIndex = (int)user_job.u.buf_init.index;
 		if(nIndex >= 0 && nIndex < oMbuffers.size()) {
-			AddDeferredTask([&, nIndex]() {
+			oDeferredTasks.AddTask([&, nIndex]() {
 				LOGD("VIDIOC_QUERYBUF(%d)...", nIndex);
 
 				v4l2_buffer buffer;
@@ -489,7 +372,7 @@ namespace __03_qvio_ctl__ {
 #if 1
 		int nIndex = (int)user_job.u.buf_init.index;
 		if(nIndex >= 0 && nIndex < oMbuffers.size()) {
-			AddDeferredTask([&, nIndex]() {
+			oDeferredTasks.AddTask([&, nIndex]() {
 				LOGD("munmap BUFFER(%d)...", nIndex);
 
 				mmap_buffer& mbuffer = oMbuffers[nIndex];
@@ -516,18 +399,22 @@ namespace __03_qvio_ctl__ {
 	void App::VidUserJob_START_STREAMING(const qvio_user_job& user_job, qvio_user_job_done& user_job_done) {
 		LOGD("%s(%d): ", __FUNCTION__, (int)user_job.sequence);
 
-		bVidSrcDone.store(false);
-		pVidSrcThread.reset(new std::thread(std::bind(&App::VidSrc_Main, this)));
+		oDeferredTasks.AddTask([&]() {
+			bVidSrcDone.store(false);
+			pVidSrcThread.reset(new std::thread(std::bind(&App::VidSrc_Main, this)));
+		});
 	}
 
 	void App::VidUserJob_STOP_STREAMING(const qvio_user_job& user_job, qvio_user_job_done& user_job_done) {
 		LOGD("%s(%d): ", __FUNCTION__, (int)user_job.sequence);
 
-		bVidSrcDone.store(true);
-		if(pVidSrcThread) {
-			pVidSrcThread->join();
-			pVidSrcThread.reset();
-		}
+		oDeferredTasks.AddTask([&]() {
+			bVidSrcDone.store(true);
+			if(pVidSrcThread) {
+				pVidSrcThread->join();
+				pVidSrcThread.reset();
+			}
+		});
 	}
 
 	void App::VidUserJob_BUF_DONE(const qvio_user_job& user_job, qvio_user_job_done& user_job_done) {
@@ -587,31 +474,24 @@ namespace __03_qvio_ctl__ {
 
 			LOGD("nVidSrcFd=%d", nVidSrcFd);
 
-			v4l2_format format;
-			memset(&format, 0, sizeof(v4l2_format));
-			format.type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
-			format.fmt.pix.width = nWidth;
-			format.fmt.pix.height = nHeight;
-			format.fmt.pix.pixelformat = V4L2_PIX_FMT_YUYV;
-			format.fmt.pix.field = V4L2_FIELD_NONE;
-			format.fmt.pix.bytesperline = ZZ_ALIGN(nWidth, 0x1000) * 2;
-			format.fmt.pix.sizeimage = format.fmt.pix.bytesperline * nHeight;
-
-			err = ioctl(nVidSrcFd, VIDIOC_S_FMT, &format);
+			err = ioctl(nVidSrcFd, VIDIOC_S_FMT, &oVidSrcFormat);
 			if(err) {
 				err = errno;
 				LOGE("%s(%d): ioctl(VIDIOC_S_FMT) failed, err=%d", __FUNCTION__, __LINE__, err);
 				break;
 			}
 
-			LOGD("-param: %d %d",
-				(int)format.fmt.pix.sizeimage,
-				(int)format.fmt.pix.bytesperline);
+			LOGD("-param: %dx%d 0x%X %d %d",
+				(int)oVidSrcFormat.fmt.pix.width,
+				(int)oVidSrcFormat.fmt.pix.height,
+				oVidSrcFormat.fmt.pix.pixelformat,
+				(int)oVidSrcFormat.fmt.pix.sizeimage,
+				(int)oVidSrcFormat.fmt.pix.bytesperline);
 
 			struct v4l2_requestbuffers requestBuffers;
 			memset(&requestBuffers, 0, sizeof(struct v4l2_requestbuffers));
 			requestBuffers.count = 4;
-			requestBuffers.type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
+			requestBuffers.type = oVidSrcFormat.type;
 			requestBuffers.memory = V4L2_MEMORY_MMAP;
 			err = ioctl(nVidSrcFd, VIDIOC_REQBUFS, &requestBuffers);
 			if(err) {
@@ -634,7 +514,7 @@ namespace __03_qvio_ctl__ {
 				memset(&buffer, 0, sizeof(v4l2_buffer));
 
 				buffer.index = nIndex;
-				buffer.type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
+				buffer.type = oVidSrcFormat.type;
 				buffer.memory = V4L2_MEMORY_MMAP;
 				err = ioctl(nVidSrcFd, VIDIOC_QUERYBUF, &buffer);
 				if(err) {
@@ -687,7 +567,7 @@ namespace __03_qvio_ctl__ {
 
 				buffer.flags = 0;
 				buffer.index = nIndex;
-				buffer.type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
+				buffer.type = oVidSrcFormat.type;
 				buffer.memory = V4L2_MEMORY_MMAP;
 				err = ioctl(nVidSrcFd, VIDIOC_QBUF, &buffer);
 				if(err) {
@@ -697,7 +577,7 @@ namespace __03_qvio_ctl__ {
 				}
 			}
 
-			enum v4l2_buf_type buf_type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
+			__u32 buf_type = oVidSrcFormat.type;
 			err = ioctl(nVidSrcFd, VIDIOC_STREAMON, &buf_type);
 			if(err) {
 				LOGE("%s(%d): ioctl(VIDIOC_STREAMON) failed, err=%d", __FUNCTION__, __LINE__, err);
@@ -706,7 +586,7 @@ namespace __03_qvio_ctl__ {
 			_FreeStack += [&]() {
 				int err;
 
-				enum v4l2_buf_type buf_type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
+				__u32 buf_type = oVidSrcFormat.type;
 				err = ioctl(nVidSrcFd, VIDIOC_STREAMOFF, &buf_type);
 				if(err) {
 					LOGE("%s(%d): ioctl(VIDIOC_STREAMOFF) failed, err=%d", __FUNCTION__, __LINE__, err);
@@ -721,16 +601,25 @@ namespace __03_qvio_ctl__ {
 				if(nVidSrcFd > fd_max) fd_max = nVidSrcFd;
 				FD_SET(nVidSrcFd, &readfds);
 
-				err = select(fd_max + 1, &readfds, NULL, NULL, NULL);
+				struct timeval tval;
+				tval.tv_sec  = 0;
+				tval.tv_usec = 500 * 1000LL;
+
+				err = select(fd_max + 1, &readfds, NULL, NULL, &tval);
 				if (err < 0) {
-					LOGE("%s(%d): select() failed! err = %d", __FUNCTION__, __LINE__, err);
+					LOGE("%s(%d): select() failed! err=%d", __FUNCTION__, __LINE__, err);
+					break;
+				}
+
+				if(err == 0) {
+					LOGE("%s(%d): timed out", __FUNCTION__, __LINE__);
 					break;
 				}
 
 				if (FD_ISSET(nVidSrcFd, &readfds)) {
 					v4l2_buffer buffer;
 					memset(&buffer, 0, sizeof(v4l2_buffer));
-					buffer.type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
+					buffer.type = oVidSrcFormat.type;
 					buffer.memory = V4L2_MEMORY_MMAP;
 					err = ioctl(nVidSrcFd, VIDIOC_DQBUF, &buffer);
 					if(err) {

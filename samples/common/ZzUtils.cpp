@@ -58,7 +58,7 @@ namespace ZzUtils {
 
 			err = select(fd_max + 1, &readfds, NULL, NULL, &tval);
 			if (err < 0) {
-				LOGE("%s(%d): select() failed! err = %d", __FUNCTION__, __LINE__, err);
+				LOGE("%s(%d): select() failed! err=%d", __FUNCTION__, __LINE__, err);
 				break;
 			}
 
