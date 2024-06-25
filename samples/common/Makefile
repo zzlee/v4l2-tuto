@@ -2,13 +2,13 @@ include ../Rules.mk
 
 SRCS:= $(wildcard *.cpp)
 
-OBJS:= $(SRCS:.cpp=.o)
+OBJS:= $(SRCS:.cpp=.cpp.o)
 
 all: $(OBJS)
 
-%.o: %.cpp
+%.cpp.o: %.cpp
 	@echo "Compiling: $<"
-	$(AT)$(CXX) $(CXXFLAGS) -fPIC -c $<
+	$(AT)$(CXX) $(CXXFLAGS) -fPIC -c $< -o $@
 
 clean:
 	$(AT)rm -rf $(OBJS)

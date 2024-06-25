@@ -20,7 +20,7 @@ void qvio_queue_init(struct qvio_queue* self) {
 	mutex_init(&self->buffers_mutex);
 }
 
-static int qvio_queue_setup(struct vb2_queue *queue,
+static int __queue_setup(struct vb2_queue *queue,
 	unsigned int *num_buffers,
 	unsigned int *num_planes,
 	unsigned int sizes[],
@@ -89,7 +89,7 @@ err0:
 	return err;
 }
 
-static int qvio_buf_init(struct vb2_buffer *buffer) {
+static int __buf_init(struct vb2_buffer *buffer) {
 	int err;
 	struct qvio_queue* self = vb2_get_drv_priv(buffer->vb2_queue);
 	struct qvio_device* device = container_of(self, struct qvio_device, queue);
@@ -107,7 +107,7 @@ static int qvio_buf_init(struct vb2_buffer *buffer) {
 	return err;
 }
 
-static void qvio_buf_cleanup(struct vb2_buffer *buffer) {
+static void __buf_cleanup(struct vb2_buffer *buffer) {
 	int err;
 	struct qvio_queue* self = vb2_get_drv_priv(buffer->vb2_queue);
 	struct qvio_device* device = container_of(self, struct qvio_device, queue);
@@ -125,14 +125,11 @@ static void qvio_buf_cleanup(struct vb2_buffer *buffer) {
 	return;
 }
 
-static int qvio_buf_prepare(struct vb2_buffer *buffer) {
+static int __buf_prepare(struct vb2_buffer *buffer) {
 	int err;
 	struct qvio_queue* self = vb2_get_drv_priv(buffer->vb2_queue);
 	struct vb2_v4l2_buffer *vbuf = to_vb2_v4l2_buffer(buffer);
-	struct qvio_queue_buffer* buf = container_of(vbuf, struct qvio_queue_buffer, vb);
 	int plane_size;
-
-	pr_info("param: %p %p %d %p\n", self, vbuf, vbuf->vb2_buf.index, buf);
 
 	switch(self->current_format.type) {
 	case V4L2_BUF_TYPE_VIDEO_CAPTURE:
@@ -209,12 +206,14 @@ err0:
 	return err;
 }
 
-static void qvio_buf_queue(struct vb2_buffer *buffer) {
+static void __buf_queue(struct vb2_buffer *buffer) {
 	struct qvio_queue* self = vb2_get_drv_priv(buffer->vb2_queue);
 	struct vb2_v4l2_buffer *vbuf = to_vb2_v4l2_buffer(buffer);
 	struct qvio_queue_buffer* buf = container_of(vbuf, struct qvio_queue_buffer, vb);
 
+#if 0 // DEBUG
 	pr_info("param: %p %p %d %p\n", self, vbuf, vbuf->vb2_buf.index, buf);
+#endif
 
 	if (!mutex_lock_interruptible(&self->buffers_mutex)) {
 		list_add_tail(&buf->list, &self->buffers);
@@ -222,7 +221,7 @@ static void qvio_buf_queue(struct vb2_buffer *buffer) {
 	}
 }
 
-static int qvio_start_streaming(struct vb2_queue *queue, unsigned int count) {
+static int __start_streaming(struct vb2_queue *queue, unsigned int count) {
 	int err;
 	struct qvio_queue* self = container_of(queue, struct qvio_queue, queue);
 	struct qvio_device* device = container_of(self, struct qvio_device, queue);
@@ -241,7 +240,7 @@ static int qvio_start_streaming(struct vb2_queue *queue, unsigned int count) {
 	return err;
 }
 
-static void qvio_stop_streaming(struct vb2_queue *queue) {
+static void __stop_streaming(struct vb2_queue *queue) {
 	int err;
 	struct qvio_queue* self = container_of(queue, struct qvio_queue, queue);
 	struct qvio_device* device = container_of(self, struct qvio_device, queue);
@@ -259,7 +258,9 @@ static void qvio_stop_streaming(struct vb2_queue *queue) {
 		struct qvio_queue_buffer* node;
 
 		list_for_each_entry_safe(buf, node, &self->buffers, list) {
+#if 0 // DEBUG
 			pr_info("vb2_buffer_done: %p %d\n", buf, buf->vb.vb2_buf.index);
+#endif
 
 			vb2_buffer_done(&buf->vb.vb2_buf, VB2_BUF_STATE_ERROR);
 			list_del(&buf->list);
@@ -270,13 +271,13 @@ static void qvio_stop_streaming(struct vb2_queue *queue) {
 }
 
 static const struct vb2_ops qvio_vb2_ops = {
-	.queue_setup     = qvio_queue_setup,
-	.buf_init        = qvio_buf_init,
-	.buf_cleanup     = qvio_buf_cleanup,
-	.buf_prepare     = qvio_buf_prepare,
-	.buf_queue       = qvio_buf_queue,
-	.start_streaming = qvio_start_streaming,
-	.stop_streaming  = qvio_stop_streaming,
+	.queue_setup     = __queue_setup,
+	.buf_init        = __buf_init,
+	.buf_cleanup     = __buf_cleanup,
+	.buf_prepare     = __buf_prepare,
+	.buf_queue       = __buf_queue,
+	.start_streaming = __start_streaming,
+	.stop_streaming  = __stop_streaming,
 	.wait_prepare    = vb2_ops_wait_prepare,
 	.wait_finish     = vb2_ops_wait_finish,
 };
@@ -358,7 +359,9 @@ int qvio_queue_try_buf_done(struct qvio_queue* self) {
 	buf->vb.sequence = self->sequence++;
 	mutex_unlock(&self->buffers_mutex);
 
+#if 0 // DEBUG
 	pr_info("vb2_buffer_done: %p %d\n", buf, buf->vb.vb2_buf.index);
+#endif
 
 	err = qvio_user_job_buf_done(&device->user_job, &buf->vb.vb2_buf);
 	if(err) {

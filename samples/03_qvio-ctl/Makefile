@@ -6,7 +6,8 @@ SRCS := \
 	main.cpp \
 	$(wildcard $(COMMON_DIR)/*.cpp)
 
-OBJS := $(SRCS:.cpp=.o)
+OBJS := $(SRCS:.cpp=.cpp.o)
+OBJS += $(SRCS:.cu=.cu.o)
 
 all: $(APP)
 
@@ -16,9 +17,13 @@ clean:
 $(COMMON_DIR)/%.o: $(COMMON_DIR)/%.cpp
 	$(AT)$(MAKE) -C $(COMMON_DIR)
 
-%.o: %.cpp
+%.cpp.o: %.cpp
 	@echo "Compiling: $<"
-	$(AT)$(CXX) $(CXXFLAGS) -fPIC -c $<
+	$(AT)$(CXX) $(CXXFLAGS) -fPIC -c $< -o $@
+
+%.cu.o: %.cu
+	@echo "NVCC compiling: $<"
+	$(AT)$(NVCC) $(CUFLAGS) -c $< -o $@
 
 $(APP): $(OBJS)
 	@echo "Linking: $@"

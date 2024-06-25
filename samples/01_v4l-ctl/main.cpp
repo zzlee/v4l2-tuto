@@ -66,8 +66,7 @@ namespace __01_v4l_ctl__ {
 		void VidStreamOff();
 		void VidQbufs();
 		void VidWaitForBuffer();
-		void VidBufDone();
-		void VidWaitForUserJob();
+		void VidBufDone(int nCount);
 	};
 
 	App::App(int argc, char **argv) : argc(argc), argv(argv) {
@@ -161,12 +160,12 @@ namespace __01_v4l_ctl__ {
 
 				case 'b':
 				case 'B':
-					VidBufDone();
+					VidBufDone(1);
 					break;
 
 				case 'c':
 				case 'C':
-					VidWaitForUserJob();
+					VidBufDone(10);
 					break;
 				}
 
@@ -661,93 +660,17 @@ namespace __01_v4l_ctl__ {
 		}
 	}
 
-	void App::VidBufDone() {
+	void App::VidBufDone(int nCount) {
 		int err;
 
 		LOGD("%s(%d):...", __FUNCTION__, __LINE__);
 
-		switch(1) { case 1:
+		for(int i = 0;i < nCount;i++) {
 			err = ioctl(nVidCtrlFd, QVID_IOC_BUF_DONE);
 			if(err) {
 				err = errno;
 				LOGE("%s(%d): ioctl(QVID_IOC_BUF_DONE) failed, err=%d", __FUNCTION__, __LINE__, err);
 				break;
-			}
-		}
-	}
-
-	void App::VidWaitForUserJob() {
-		int err;
-		qvio_user_job_args user_job_args;
-		qvio_user_job_done_args user_job_done_args;
-		qvio_user_job* pCurrentUserJob;
-
-		LOGD("%s(%d):...", __FUNCTION__, __LINE__);
-
-		switch(1) { case 1:
-			err = ioctl(nVidCtrlFd, QVID_IOC_USER_JOB, &user_job_args);
-			if(err) {
-				err = errno;
-				LOGE("%s(%d): ioctl(QVID_IOC_USER_JOB) failed, err=%d", __FUNCTION__, __LINE__, err);
-				break;
-			}
-
-			pCurrentUserJob = &user_job_args.user_job;
-
-			while(true) {
-				switch(pCurrentUserJob->id) {
-				case QVIO_USER_JOB_ID_S_FMT:
-					LOGD("QVIO_USER_JOB_ID_S_FMT(%d): type=%d %dx%d", (int)pCurrentUserJob->sequence,
-						(int)pCurrentUserJob->u.s_fmt.format.type,
-						(int)pCurrentUserJob->u.s_fmt.format.fmt.pix_mp.width,
-						(int)pCurrentUserJob->u.s_fmt.format.fmt.pix_mp.height,
-						(int)pCurrentUserJob->u.s_fmt.format.fmt.pix_mp.num_planes);
-					break;
-
-				case QVIO_USER_JOB_ID_QUEUE_SETUP:
-					LOGD("QVIO_USER_JOB_ID_QUEUE_SETUP(%d): %d", (int)pCurrentUserJob->sequence,
-						(int)pCurrentUserJob->u.queue_setup.num_buffers);
-					break;
-
-				case QVIO_USER_JOB_ID_BUF_INIT:
-					LOGD("QVIO_USER_JOB_ID_BUF_INIT(%d): %d", (int)pCurrentUserJob->sequence,
-						pCurrentUserJob->u.buf_init.index);
-					break;
-
-				case QVIO_USER_JOB_ID_BUF_CLEANUP:
-					LOGD("QVIO_USER_JOB_ID_BUF_CLEANUP(%d): %d", (int)pCurrentUserJob->sequence,
-						pCurrentUserJob->u.buf_cleanup.index);
-					break;
-
-				case QVIO_USER_JOB_ID_START_STREAMING:
-					LOGD("QVIO_USER_JOB_ID_START_STREAMING(%d)", (int)pCurrentUserJob->sequence);
-					break;
-
-				case QVIO_USER_JOB_ID_STOP_STREAMING:
-					LOGD("QVIO_USER_JOB_ID_STOP_STREAMING(%d)", (int)pCurrentUserJob->sequence);
-					break;
-
-				case QVIO_USER_JOB_ID_BUF_DONE:
-					LOGD("QVIO_USER_JOB_ID_BUF_DONE(%d): %d", (int)pCurrentUserJob->sequence,
-						pCurrentUserJob->u.buf_done.index);
-					break;
-
-				default:
-					LOGW("pCurrentUserJob: %d, %d", (int)pCurrentUserJob->id, (int)pCurrentUserJob->sequence);
-					break;
-				}
-
-				user_job_done_args.user_job_done.id = pCurrentUserJob->id;
-				user_job_done_args.user_job_done.sequence = pCurrentUserJob->sequence;
-
-				err = ioctl(nVidCtrlFd, QVID_IOC_USER_JOB_DONE, &user_job_done_args);
-				if(err) {
-					err = errno;
-					LOGE("%s(%d): ioctl(QVID_IOC_USER_JOB_DONE) failed, err=%d", __FUNCTION__, __LINE__, err);
-					break;
-				}
-
-				pCurrentUserJob = &user_job_done_args.next_user_job;
 			}
 		}
 	}

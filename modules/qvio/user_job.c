@@ -120,9 +120,11 @@ long qvio_user_job_ioctl_get(struct qvio_user_job_dev* self, unsigned long arg) 
 	list_del(&user_job_entry->node);
 	spin_unlock_irqrestore(&self->user_job_list_lock, flags);
 
+#if 0 // DEBUG
 	pr_info("-user_job(%d, %d)\n",
 		(int)user_job_entry->user_job.id,
 		(int)user_job_entry->user_job.sequence);
+#endif
 
 	ret = copy_to_user((void __user *)arg, &user_job_entry->user_job, sizeof(struct qvio_user_job));
 	if (ret != 0) {
@@ -149,7 +151,9 @@ long qvio_user_job_ioctl_done(struct qvio_user_job_dev* self, unsigned long arg)
 	struct __user_job_done_entry *user_job_done_entry;
 	unsigned long flags;
 
+#if 0 // DEBUG
 	pr_info("\n");
+#endif
 
 	err = __user_job_done_entry_new(&user_job_done_entry);
 	if(err) {
@@ -167,9 +171,11 @@ long qvio_user_job_ioctl_done(struct qvio_user_job_dev* self, unsigned long arg)
 		goto err1;
 	}
 
-	pr_info("+use_job_done(%d, %d)\n",
+#if 0 // DEBUG
+	pr_info("+user_job_done(%d, %d)\n",
 		(int)user_job_done_entry->user_job_done.id,
 		(int)user_job_done_entry->user_job_done.sequence);
+#endif
 
 	spin_lock_irqsave(&self->user_job_done_list_lock, flags);
 	list_add_tail(&user_job_done_entry->node, &self->user_job_done_list);
@@ -199,9 +205,11 @@ __poll_t qvio_user_job_poll(struct qvio_user_job_dev* self, struct file *filp, s
 static void __do_user_job(struct qvio_user_job_dev* self, struct __user_job_entry* user_job_entry) {
 	unsigned long flags;
 
+#if 0 // DEBUG
 	pr_info("+user_job(%d, %d)\n",
 		(int)user_job_entry->user_job.id,
 		(int)user_job_entry->user_job.sequence);
+#endif
 
 	spin_lock_irqsave(&self->user_job_list_lock, flags);
 	list_add_tail(&user_job_entry->node, &self->user_job_list);
@@ -217,7 +225,9 @@ static int __wait_for_user_job_done(struct qvio_user_job_dev* self, void* user, 
 	unsigned long flags;
 	struct __user_job_done_entry* user_job_done_entry;
 
+#if 0 // DEBUG
 	pr_info("\n");
+#endif
 
 	// wait for user-job-done
 	err = wait_event_interruptible(self->user_job_done_wq, !list_empty(&self->user_job_done_list));
@@ -228,7 +238,9 @@ static int __wait_for_user_job_done(struct qvio_user_job_dev* self, void* user, 
 
 	err = 0;
 
+#if 0 // DEBUG
 	pr_info("\n");
+#endif
 
 	if(list_empty(&self->user_job_done_list)) {
 		pr_err("self->user_job_done_list is empty\n");
@@ -241,9 +253,11 @@ static int __wait_for_user_job_done(struct qvio_user_job_dev* self, void* user, 
 	list_del(&user_job_done_entry->node);
 	spin_unlock_irqrestore(&self->user_job_done_list_lock, flags);
 
-	pr_info("-use_job_done(%d, %d)\n",
+#if 0 // DEBUG
+	pr_info("-user_job_done(%d, %d)\n",
 		(int)user_job_done_entry->user_job_done.id,
 		(int)user_job_done_entry->user_job_done.sequence);
+#endif
 
 	if(fn) {
 		fn(user, user_job_done_entry);
@@ -446,7 +460,9 @@ int qvio_user_job_buf_done(struct qvio_user_job_dev* self, struct vb2_buffer *bu
 	int err;
 	struct __user_job_entry *user_job_entry;
 
+#if 0 // DEBUG
 	pr_info("\n");
+#endif
 
 	err = __user_job_entry_new(&user_job_entry);
 	if(err) {

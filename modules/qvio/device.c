@@ -221,9 +221,11 @@ int qvio_device_start(struct qvio_device* self) {
 		self->current_format.fmt.pix.sizeimage =
 			self->current_format.fmt.pix.bytesperline * self->current_format.fmt.pix.height * 3 / 2;
 
+#if 0 // DEBUG
 		pr_info("bytesperline=%d sizeimage=%d\n",
 			(int)self->current_format.fmt.pix.bytesperline,
 			(int)self->current_format.fmt.pix.sizeimage);
+#endif
 		break;
 
 	case V4L2_BUF_TYPE_VIDEO_CAPTURE_MPLANE:
@@ -241,11 +243,13 @@ int qvio_device_start(struct qvio_device* self) {
 		self->current_format.fmt.pix_mp.plane_fmt[1].sizeimage =
 			self->current_format.fmt.pix_mp.plane_fmt[1].bytesperline * self->current_format.fmt.pix_mp.height / 2;
 
+#if 0 // DEBUG
 		pr_info("bytesperline=%d/%d sizeimage=%d/%d\n",
 			(int)self->current_format.fmt.pix_mp.plane_fmt[0].bytesperline,
 			(int)self->current_format.fmt.pix_mp.plane_fmt[1].bytesperline,
 			(int)self->current_format.fmt.pix_mp.plane_fmt[0].sizeimage,
 			(int)self->current_format.fmt.pix_mp.plane_fmt[1].sizeimage);
+#endif
 		break;
 
 	default:
@@ -305,7 +309,60 @@ int qvio_device_s_fmt(struct qvio_device* self, struct v4l2_format *format) {
 		goto err0;
 	}
 
+	switch(format->type) {
+	case V4L2_BUF_TYPE_VIDEO_CAPTURE:
+	case V4L2_BUF_TYPE_VIDEO_OUTPUT:
+		switch(format->fmt.pix.pixelformat) {
+		case V4L2_PIX_FMT_NV12:
+			format->fmt.pix.bytesperline = ZZ_ALIGN(format->fmt.pix.width, HALIGN);
+			format->fmt.pix.sizeimage = format->fmt.pix.bytesperline * format->fmt.pix.height * 3 / 2;
+
+#if 0 // DEBUG
+			pr_info("%dx%d bytesperline=%d sizeimage=%d\n",
+				format->fmt.pix.width, format->fmt.pix.height,
+				(int)format->fmt.pix.bytesperline,
+				(int)format->fmt.pix.sizeimage);
+#endif
+			break;
+
+		default:
+			pr_err("invalid value, format->fmt.pix.pixelformat=%d", (int)format->fmt.pix.pixelformat);
+			err = -EINVAL;
+			goto err0;
+			break;
+		}
+		break;
+
+	case V4L2_BUF_TYPE_VIDEO_CAPTURE_MPLANE:
+	case V4L2_BUF_TYPE_VIDEO_OUTPUT_MPLANE:
+		switch(format->fmt.pix_mp.pixelformat) {
+		case V4L2_PIX_FMT_NV12:
+			format->fmt.pix_mp.num_planes = 2;
+			format->fmt.pix_mp.plane_fmt[0].bytesperline = ZZ_ALIGN(format->fmt.pix_mp.width, HALIGN);
+			format->fmt.pix_mp.plane_fmt[0].sizeimage =
+				format->fmt.pix_mp.plane_fmt[0].bytesperline * format->fmt.pix_mp.height;
+			format->fmt.pix_mp.plane_fmt[1].bytesperline = ZZ_ALIGN(format->fmt.pix_mp.width, HALIGN);
+			format->fmt.pix_mp.plane_fmt[1].sizeimage =
+				format->fmt.pix_mp.plane_fmt[1].bytesperline * format->fmt.pix_mp.height / 2;
+			break;
+
+		default:
+			pr_err("invalid value, format->fmt.pix_mp.pixelformat=%d", (int)format->fmt.pix_mp.pixelformat);
+			err = -EINVAL;
+			goto err0;
+			break;
+		}
+		break;
+
+	default:
+		pr_err("unexpected value, format->type=%d\n", (int)format->type);
+		err = -EINVAL;
+		goto err0;
+		break;
+	}
+
 	memcpy(&self->current_format, format, sizeof(struct v4l2_format));
+
 	err = qvio_queue_s_fmt(&self->queue, format);
 	if(err) {
 		pr_err("qvio_queue_s_fmt() failed, err=%d", err);
@@ -712,7 +769,9 @@ long qvio_device_buf_done(struct qvio_device* self) {
 	long ret;
 	int err;
 
+#if 0 // DEBUG
 	pr_info("\n");
+#endif
 
 	err = qvio_queue_try_buf_done(&self->queue);
 	if(err) {
