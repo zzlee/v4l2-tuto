@@ -89,6 +89,18 @@ err0:
 	return err;
 }
 
+static void __buf_init_done(void* user, struct qvio_user_job_done* user_job_done) {
+	struct vb2_buffer *buffer = user;
+	struct vb2_v4l2_buffer *vbuf = to_vb2_v4l2_buffer(buffer);
+	struct qvio_queue_buffer* buf = container_of(vbuf, struct qvio_queue_buffer, vb);
+
+	pr_info("BUF[%d]: dma_buf=%d offset=%d/%d pitch=%d/%d psize=%d/%d",
+		vbuf->vb2_buf.index, user_job_done->u.buf_init.dma_buf,
+		user_job_done->u.buf_init.offset[0], user_job_done->u.buf_init.offset[1],
+		user_job_done->u.buf_init.pitch[0], user_job_done->u.buf_init.pitch[1],
+		user_job_done->u.buf_init.psize[0], user_job_done->u.buf_init.psize[1]);
+}
+
 static int __buf_init(struct vb2_buffer *buffer) {
 	int err;
 	struct qvio_queue* self = vb2_get_drv_priv(buffer->vb2_queue);
@@ -98,7 +110,7 @@ static int __buf_init(struct vb2_buffer *buffer) {
 
 	pr_info("param: %p %p %d %p\n", self, vbuf, vbuf->vb2_buf.index, buf);
 
-	err = qvio_user_job_buf_init(&device->user_job, buffer);
+	err = qvio_user_job_buf_init(&device->user_job, buffer, buffer, __buf_init_done);
 	if(err) {
 		pr_warn("qvio_user_job_buf_init() failed, err=%d", err);
 	}

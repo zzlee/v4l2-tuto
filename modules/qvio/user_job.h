@@ -10,6 +10,8 @@
 
 #include "uapi/qvio.h"
 
+typedef void (*qvio_user_job_done_handler)(void* user, struct qvio_user_job_done* user_job_done);
+
 struct qvio_user_job_dev {
 	atomic_t user_job_sequence;
 
@@ -37,7 +39,7 @@ __poll_t qvio_user_job_poll(struct qvio_user_job_dev* self, struct file *filp, s
 // user-job
 int qvio_user_job_s_fmt(struct qvio_user_job_dev* self, struct v4l2_format *format);
 int qvio_user_job_queue_setup(struct qvio_user_job_dev* self, unsigned int num_buffers);
-int qvio_user_job_buf_init(struct qvio_user_job_dev* self, struct vb2_buffer *buffer);
+int qvio_user_job_buf_init(struct qvio_user_job_dev* self, struct vb2_buffer *buffer, void* user, qvio_user_job_done_handler fn);
 int qvio_user_job_buf_cleanup(struct qvio_user_job_dev* self, struct vb2_buffer *buffer);
 int qvio_user_job_start_streaming(struct qvio_user_job_dev* self);
 int qvio_user_job_stop_streaming(struct qvio_user_job_dev* self);

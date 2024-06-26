@@ -11,8 +11,8 @@ SRCS := \
 	$(wildcard $(COMMON_DIR)/*.cpp) \
 	kernels.cu
 
-OBJS := $(SRCS:.cpp=.cpp.o)
-OBJS := $(OBJS:.cu=.cu.o)
+OBJS := $(SRCS:.cpp=.o)
+OBJS := $(OBJS:.cu=.o)
 
 .PHONY: all clean
 
@@ -22,6 +22,9 @@ clean:
 	$(AT)rm -rf $(APP) $(OBJS)
 
 include ../Targets.mk
+
+$(COMMON_DIR)/%.o: $(COMMON_DIR)/%.cpp
+	$(AT)$(MAKE) -C $(COMMON_DIR)
 
 $(APP): $(OBJS)
 	@echo "Linking: $@"

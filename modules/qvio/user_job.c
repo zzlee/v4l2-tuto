@@ -218,9 +218,7 @@ static void __do_user_job(struct qvio_user_job_dev* self, struct __user_job_entr
 	wake_up_interruptible(&self->user_job_wq);
 }
 
-typedef void (*user_job_done_handler)(void* user, struct __user_job_done_entry* user_job_done_entry);
-
-static int __wait_for_user_job_done(struct qvio_user_job_dev* self, void* user, user_job_done_handler fn) {
+static int __wait_for_user_job_done(struct qvio_user_job_dev* self, void* user, qvio_user_job_done_handler fn) {
 	int err;
 	unsigned long flags;
 	struct __user_job_done_entry* user_job_done_entry;
@@ -260,7 +258,7 @@ static int __wait_for_user_job_done(struct qvio_user_job_dev* self, void* user, 
 #endif
 
 	if(fn) {
-		fn(user, user_job_done_entry);
+		fn(user, &user_job_done_entry->user_job_done);
 	}
 	kfree(user_job_done_entry);
 
@@ -332,7 +330,7 @@ err0:
 	return err;
 }
 
-int qvio_user_job_buf_init(struct qvio_user_job_dev* self, struct vb2_buffer *buffer) {
+int qvio_user_job_buf_init(struct qvio_user_job_dev* self, struct vb2_buffer *buffer, void* user, qvio_user_job_done_handler fn) {
 	int err;
 	struct __user_job_entry *user_job_entry;
 
@@ -349,7 +347,7 @@ int qvio_user_job_buf_init(struct qvio_user_job_dev* self, struct vb2_buffer *bu
 	user_job_entry->user_job.u.buf_init.index = buffer->index;
 	__do_user_job(self, user_job_entry);
 
-	err = __wait_for_user_job_done(self, NULL, NULL);
+	err = __wait_for_user_job_done(self, user, fn);
 	if(err) {
 		pr_err("__wait_for_user_job_done() failed, err=%d\n", err);
 		goto err0;
