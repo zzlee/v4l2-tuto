@@ -18,10 +18,6 @@ NVCC           ?= /usr/local/cuda/bin/nvcc
 
 COMMON_DIR := ../common
 
-CXXFLAGS += \
--std=c++11 \
--I${COMMON_DIR}
-
 CFLAGS += \
 -I${COMMON_DIR}
 
@@ -41,7 +37,7 @@ ${GENCODE_FLAGS}
 
 ifeq (${BUILD_WITH_CUDA},ON)
 
-CXXFLAGS += \
+CFLAGS += \
 -DBUILD_WITH_CUDA=1 \
 -I/usr/local/cuda/include
 
@@ -55,7 +51,7 @@ endif
 
 ifeq (${BUILD_WITH_NVBUF},ON)
 
-CXXFLAGS += \
+CFLAGS += \
 -DBUILD_WITH_NVBUF=1 \
 -I/usr/src/jetson_multimedia_api/include
 
@@ -68,7 +64,7 @@ endif
 
 ifeq (${BUILD_WITH_NPP},ON)
 
-CXXFLAGS += \
+CFLAGS += \
 -DBUILD_WITH_NPP=1
 
 LDFLAGS += \
@@ -85,3 +81,7 @@ LDFLAGS += \
 -lnpps
 
 endif
+
+CXXFLAGS += \
+-std=c++11 \
+${CFLAGS}

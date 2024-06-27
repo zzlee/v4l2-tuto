@@ -28,12 +28,8 @@ struct qvio_device {
 	unsigned int current_inout;
 	struct v4l2_streamparm current_parm;
 
-	// cdev
-	dev_t cdevno;
-	struct cdev cdev;
-
 	// user job
-	struct qvio_user_job_dev user_job;
+	struct qvio_user_job_ctrl user_job_ctrl;
 };
 
 int qvio_device_register(void);

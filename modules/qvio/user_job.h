@@ -12,37 +12,31 @@
 
 typedef void (*qvio_user_job_done_handler)(void* user, struct qvio_user_job_done* user_job_done);
 
-struct qvio_user_job_dev {
-	atomic_t user_job_sequence;
+struct qvio_user_job_ctrl {
+	atomic_t sequence;
 
 	// user-job list
-	wait_queue_head_t user_job_wq;
-	spinlock_t user_job_list_lock;
-	struct list_head user_job_list;
+	wait_queue_head_t job_wq;
+	spinlock_t job_list_lock;
+	struct list_head job_list;
 
 	// user-job-done lsit
-	wait_queue_head_t user_job_done_wq;
-	spinlock_t user_job_done_list_lock;
-	struct list_head user_job_done_list;
+	wait_queue_head_t done_wq;
+	spinlock_t done_list_lock;
+	struct list_head done_list;
 };
 
-void qvio_user_job_init(struct qvio_user_job_dev* self);
-void qvio_user_job_uninit(struct qvio_user_job_dev* self);
-
-// proprietary v4l2 ioctl
-long qvio_user_job_ioctl_get(struct qvio_user_job_dev* self, unsigned long arg);
-long qvio_user_job_ioctl_done(struct qvio_user_job_dev* self, unsigned long arg);
-
-// proprietary file ops
-__poll_t qvio_user_job_poll(struct qvio_user_job_dev* self, struct file *filp, struct poll_table_struct *wait);
+void qvio_user_job_init(struct qvio_user_job_ctrl* self);
+void qvio_user_job_uninit(struct qvio_user_job_ctrl* self);
+int qvio_user_job_get_fd(struct qvio_user_job_ctrl* self);
 
 // user-job
-int qvio_user_job_s_fmt(struct qvio_user_job_dev* self, struct v4l2_format *format);
-int qvio_user_job_queue_setup(struct qvio_user_job_dev* self, unsigned int num_buffers);
-int qvio_user_job_buf_init(struct qvio_user_job_dev* self, struct vb2_buffer *buffer, void* user, qvio_user_job_done_handler fn);
-int qvio_user_job_buf_cleanup(struct qvio_user_job_dev* self, struct vb2_buffer *buffer);
-int qvio_user_job_start_streaming(struct qvio_user_job_dev* self);
-int qvio_user_job_stop_streaming(struct qvio_user_job_dev* self);
-int qvio_user_job_buf_done(struct qvio_user_job_dev* self, struct vb2_buffer *buffer);
+int qvio_user_job_s_fmt(struct qvio_user_job_ctrl* self, struct v4l2_format *format);
+int qvio_user_job_queue_setup(struct qvio_user_job_ctrl* self, unsigned int num_buffers);
+int qvio_user_job_buf_init(struct qvio_user_job_ctrl* self, struct vb2_buffer *buffer, void* user, qvio_user_job_done_handler fn);
+int qvio_user_job_buf_cleanup(struct qvio_user_job_ctrl* self, struct vb2_buffer *buffer);
+int qvio_user_job_start_streaming(struct qvio_user_job_ctrl* self);
+int qvio_user_job_stop_streaming(struct qvio_user_job_ctrl* self);
+int qvio_user_job_buf_done(struct qvio_user_job_ctrl* self, struct vb2_buffer *buffer);
 
 #endif // __QVIO_USER_JOB_H__

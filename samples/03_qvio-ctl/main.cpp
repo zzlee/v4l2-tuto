@@ -207,10 +207,10 @@ namespace __03_qvio_ctl__ {
 			LOGD("nVidFd=%d", nVidFd);
 			nBufType = V4L2_BUF_TYPE_VIDEO_CAPTURE;
 
-			nVidCtrlFd = open("/dev/qvio0", O_RDWR);
-			if(nVidCtrlFd == -1) {
+			err = ioctl(nVidFd, QVID_IOC_USER_JOB_FD, &nVidCtrlFd);
+			if(err) {
 				err = errno;
-				LOGE("%s(%d): open() failed, err=%d", __FUNCTION__, __LINE__, err);
+				LOGE("%s(%d): ioctl(QVID_IOC_USER_JOB_FD) failed, err=%d", __FUNCTION__, __LINE__, err);
 				break;
 			}
 			oFreeStack += [&]() {
@@ -909,7 +909,7 @@ namespace __03_qvio_ctl__ {
 					oSrcBufferQ.push_back(buffer);
 					lck.unlock();
 
-					err = ioctl(nVidCtrlFd, QVID_IOC_BUF_DONE);
+					err = ioctl(nVidFd, QVID_IOC_BUF_DONE);
 					if(err) {
 						err = errno;
 						LOGE("%s(%d): ioctl(QVID_IOC_BUF_DONE) failed, err=%d", __FUNCTION__, __LINE__, err);

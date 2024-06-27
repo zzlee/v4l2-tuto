@@ -2,7 +2,6 @@
 
 #include "ioctl.h"
 #include "device.h"
-#include "cdev.h"
 #include "uapi/qvio.h"
 
 #include <linux/version.h>
@@ -18,10 +17,8 @@ static int __ioctl_querycap(struct file *file, void *fh, struct v4l2_capability 
 
 	memset(capability, 0, sizeof(struct v4l2_capability));
 	snprintf((char *) capability->driver, 16, "%s", "qvio driver");
-	snprintf((char *) capability->card,
-			 32, "qvio");
-	snprintf((char *) capability->bus_info,
-			 32, QVIO_CDEV_NAME "%d", MINOR(device->cdevno));
+	snprintf((char *) capability->card, 32, "qvio card");
+	snprintf((char *) capability->bus_info, 32, "qvio bus");
 	capability->version = LINUX_VERSION_CODE;
 
 	capability->capabilities = device->device_caps | V4L2_CAP_DEVICE_CAPS;
@@ -282,6 +279,37 @@ err0:
 	return err;
 }
 
+static long __ioctl_default(struct file *file, void *fh, bool valid_prio, unsigned int cmd, void *arg) {
+	long ret;
+	struct qvio_device* device = video_drvdata(file);
+
+#if 0
+	pr_info("valid_prio=%d cmd=%d arg=%p\n", valid_prio, cmd, arg);
+#endif
+
+	switch(cmd) {
+	case QVID_IOC_USER_JOB_FD: {
+		int* pFd = (int*)arg;
+
+		*pFd = qvio_user_job_get_fd(&device->user_job_ctrl);
+		ret = 0;
+
+		pr_info("fd=%d\n", *pFd);
+	}
+		break;
+
+	case QVID_IOC_BUF_DONE:
+		ret = qvio_device_buf_done(device);
+		break;
+
+	default:
+		ret = -ENOIOCTLCMD;
+		break;
+	}
+
+	return ret;
+}
+
 const struct v4l2_ioctl_ops *qvio_ioctl_ops(void) {
 	static const struct v4l2_ioctl_ops ops = {
 		.vidioc_querycap               = __ioctl_querycap,
@@ -321,6 +349,7 @@ const struct v4l2_ioctl_ops *qvio_ioctl_ops(void) {
 		.vidioc_enum_frameintervals    = __ioctl_enum_frameintervals,
 		.vidioc_subscribe_event        = v4l2_ctrl_subscribe_event,
 		.vidioc_unsubscribe_event      = v4l2_event_unsubscribe,
+		.vidioc_default                = __ioctl_default,
 	};
 
 	return &ops;

@@ -1,7 +1,14 @@
-%.o: %.cpp
+# cancel impicit rules
+%: %.o
+
+%.c.o: %.c
+	@echo "CC: $< ==> $@"
+	$(AT)$(CC) $(CFLAGS) -fPIC -c $< -o $@
+
+%.cpp.o: %.cpp
 	@echo "CXX: $< ==> $@"
 	$(AT)$(CXX) $(CXXFLAGS) -fPIC -c $< -o $@
 
-%.o: %.cu
+%.cu.o: %.cu
 	@echo "NVCC: $< ==> $@"
 	$(AT)$(NVCC) $(CUFLAGS) -c $< -o $@

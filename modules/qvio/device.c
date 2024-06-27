@@ -2,7 +2,6 @@
 
 #include "device.h"
 #include "ioctl.h"
-#include "cdev.h"
 #include "user_job.h"
 
 #include <linux/platform_device.h>
@@ -35,12 +34,6 @@ static int probe(struct platform_device *pdev) {
 		goto err2;
 	}
 
-	err = qvio_cdev_start(g_dev_rx);
-	if(err) {
-		pr_err("qvio_cdev_start() failed, err=%d\n", err);
-		goto err1;
-	}
-
 	g_dev_tx = qvio_device_new();
 	if(! g_dev_tx) {
 		pr_err("qvio_device_new() failed\n");
@@ -59,23 +52,13 @@ static int probe(struct platform_device *pdev) {
 		goto err5;
 	}
 
-	err = qvio_cdev_start(g_dev_tx);
-	if(err) {
-		pr_err("qvio_cdev_start() failed, err=%d\n", err);
-		goto err4;
-	}
-
 	return err;
 
 err5:
-	qvio_cdev_stop(g_dev_tx);
-err4:
 	qvio_device_put(g_dev_tx);
 err3:
 	qvio_device_stop(g_dev_rx);
 err2:
-	qvio_cdev_stop(g_dev_rx);
-err1:
 	qvio_device_put(g_dev_rx);
 err0:
 	return err;
@@ -87,10 +70,8 @@ static int remove(struct platform_device *pdev) {
 	pr_info("\n");
 
 	qvio_device_stop(g_dev_tx);
-	qvio_cdev_stop(g_dev_tx);
 	qvio_device_put(g_dev_tx);
 	qvio_device_stop(g_dev_rx);
-	qvio_cdev_stop(g_dev_rx);
 	qvio_device_put(g_dev_rx);
 
 	return err;
@@ -136,8 +117,7 @@ struct qvio_device* qvio_device_new(void) {
 	self->vfl_dir = VFL_DIR_RX;
 	self->buffer_type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
 	self->device_caps = V4L2_CAP_VIDEO_CAPTURE | V4L2_CAP_STREAMING;
-	qvio_cdev_init(self);
-	qvio_user_job_init(&self->user_job);
+	qvio_user_job_init(&self->user_job_ctrl);
 
 	return self;
 }
@@ -155,7 +135,7 @@ static void qvio_device_free(struct kref *ref)
 
 	pr_info("\n");
 
-	qvio_user_job_uninit(&self->user_job);
+	qvio_user_job_uninit(&self->user_job_ctrl);
 	kfree(self);
 }
 
@@ -369,7 +349,7 @@ int qvio_device_s_fmt(struct qvio_device* self, struct v4l2_format *format) {
 		goto err0;
 	}
 
-	err = qvio_user_job_s_fmt(&self->user_job, format);
+	err = qvio_user_job_s_fmt(&self->user_job_ctrl, format);
 	if(err) {
 		pr_warn("qvio_user_job_s_fmt() failed, err=%d", err);
 	}

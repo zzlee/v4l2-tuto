@@ -75,7 +75,7 @@ static int __queue_setup(struct vb2_queue *queue,
 		break;
 	}
 
-	err = qvio_user_job_queue_setup(&device->user_job, *num_buffers);
+	err = qvio_user_job_queue_setup(&device->user_job_ctrl, *num_buffers);
 	if(err) {
 		pr_warn("qvio_user_job_queue_setup() failed, err=%d", err);
 	}
@@ -110,7 +110,7 @@ static int __buf_init(struct vb2_buffer *buffer) {
 
 	pr_info("param: %p %p %d %p\n", self, vbuf, vbuf->vb2_buf.index, buf);
 
-	err = qvio_user_job_buf_init(&device->user_job, buffer, buffer, __buf_init_done);
+	err = qvio_user_job_buf_init(&device->user_job_ctrl, buffer, buffer, __buf_init_done);
 	if(err) {
 		pr_warn("qvio_user_job_buf_init() failed, err=%d", err);
 	}
@@ -128,7 +128,7 @@ static void __buf_cleanup(struct vb2_buffer *buffer) {
 
 	pr_info("param: %p %p %d %p\n", self, vbuf, vbuf->vb2_buf.index, buf);
 
-	err = qvio_user_job_buf_cleanup(&device->user_job, buffer);
+	err = qvio_user_job_buf_cleanup(&device->user_job_ctrl, buffer);
 	if(err) {
 		pr_warn("qvio_user_job_buf_cleanup() failed, err=%d", err);
 	}
@@ -240,7 +240,7 @@ static int __start_streaming(struct vb2_queue *queue, unsigned int count) {
 
 	pr_info("\n");
 
-	err = qvio_user_job_start_streaming(&device->user_job);
+	err = qvio_user_job_start_streaming(&device->user_job_ctrl);
 	if(err) {
 		pr_warn("qvio_user_job_start_streaming() failed, err=%d", err);
 	}
@@ -259,7 +259,7 @@ static void __stop_streaming(struct vb2_queue *queue) {
 
 	pr_info("\n");
 
-	err = qvio_user_job_stop_streaming(&device->user_job);
+	err = qvio_user_job_stop_streaming(&device->user_job_ctrl);
 	if(err) {
 		pr_warn("qvio_user_job_stop_streaming() failed, err=%d", err);
 	}
@@ -375,7 +375,7 @@ int qvio_queue_try_buf_done(struct qvio_queue* self) {
 	pr_info("vb2_buffer_done: %p %d\n", buf, buf->vb.vb2_buf.index);
 #endif
 
-	err = qvio_user_job_buf_done(&device->user_job, &buf->vb.vb2_buf);
+	err = qvio_user_job_buf_done(&device->user_job_ctrl, &buf->vb.vb2_buf);
 	if(err) {
 		pr_warn("qvio_user_job_buf_done() failed, err=%d", err);
 	}
