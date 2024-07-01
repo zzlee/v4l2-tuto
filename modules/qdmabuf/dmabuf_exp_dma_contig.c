@@ -133,8 +133,7 @@ static void exp_dma_contig_dma_buf_release(struct dma_buf *dbuf) {
 	exp_dma_contig_buffer_put(dbuf->priv);
 }
 
-static struct sg_table * exp_dma_contig_map_dma_buf(struct dma_buf_attachment *db_attach,
-	enum dma_data_direction dma_dir) {
+static struct sg_table * exp_dma_contig_map_dma_buf(struct dma_buf_attachment *db_attach, enum dma_data_direction dma_dir) {
 	struct exp_dma_contig_attachment *attach = db_attach->priv;
 	struct sg_table *sgt;
 
@@ -195,17 +194,13 @@ err0:
 	return sgt;
 }
 
-static void exp_dma_contig_unmap_dma_buf(struct dma_buf_attachment * db_attach,
-	struct sg_table * sgt,
-	enum dma_data_direction dma_dir) {
-
+static void exp_dma_contig_unmap_dma_buf(struct dma_buf_attachment * db_attach, struct sg_table * sgt, enum dma_data_direction dma_dir) {
 	pr_info("db_attach=%p\n", db_attach);
 
 	/* nothing to be done here */
 }
 
-static int exp_dma_contig_begin_cpu_access(struct dma_buf *dbuf,
-	enum dma_data_direction direction)
+static int exp_dma_contig_begin_cpu_access(struct dma_buf *dbuf, enum dma_data_direction direction)
 {
 	struct exp_dma_contig_buffer *buf = dbuf->priv;
 
@@ -214,8 +209,7 @@ static int exp_dma_contig_begin_cpu_access(struct dma_buf *dbuf,
 	return 0;
 }
 
-static int exp_dma_contig_end_cpu_access(struct dma_buf *dbuf,
-	enum dma_data_direction direction)
+static int exp_dma_contig_end_cpu_access(struct dma_buf *dbuf, enum dma_data_direction direction)
 {
 	struct exp_dma_contig_buffer *buf = dbuf->priv;
 
@@ -243,8 +237,7 @@ static int exp_dma_contig_vmap(struct dma_buf *dbuf, struct dma_buf_map *map)
 #endif
 }
 
-static int exp_dma_contig_mmap(struct dma_buf *dbuf,
-	struct vm_area_struct *vma) {
+static int exp_dma_contig_mmap(struct dma_buf *dbuf, struct vm_area_struct *vma) {
 	struct exp_dma_contig_buffer *buf = dbuf->priv;
 	int ret;
 

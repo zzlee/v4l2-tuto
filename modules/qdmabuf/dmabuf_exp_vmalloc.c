@@ -125,8 +125,7 @@ static void exp_vmalloc_dma_buf_release(struct dma_buf *dbuf) {
 	exp_vmalloc_buffer_put(dbuf->priv);
 }
 
-static struct sg_table * exp_vmalloc_map_dma_buf(struct dma_buf_attachment *db_attach,
-	enum dma_data_direction dma_dir) {
+static struct sg_table * exp_vmalloc_map_dma_buf(struct dma_buf_attachment *db_attach, enum dma_data_direction dma_dir) {
 	struct exp_vmalloc_attachment *attach = db_attach->priv;
 	/* stealing dmabuf mutex to serialize map/unmap operations */
 	struct mutex *lock = &db_attach->dmabuf->lock;
@@ -193,10 +192,7 @@ err0:
 	return sgt;
 }
 
-static void exp_vmalloc_unmap_dma_buf(struct dma_buf_attachment * db_attach,
-	struct sg_table * sgt,
-	enum dma_data_direction dma_dir) {
-
+static void exp_vmalloc_unmap_dma_buf(struct dma_buf_attachment * db_attach, struct sg_table * sgt, enum dma_data_direction dma_dir) {
 	pr_info("db_attach=%p\n", db_attach);
 
 	/* nothing to be done here */
@@ -221,8 +217,7 @@ static int exp_vmalloc_vmap(struct dma_buf *dbuf, struct dma_buf_map *map)
 #endif
 }
 
-static int exp_vmalloc_mmap(struct dma_buf *dbuf,
-	struct vm_area_struct *vma) {
+static int exp_vmalloc_mmap(struct dma_buf *dbuf, struct vm_area_struct *vma) {
 	struct exp_vmalloc_buffer *buf = dbuf->priv;
 	int ret;
 

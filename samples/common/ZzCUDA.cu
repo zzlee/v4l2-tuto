@@ -22,8 +22,7 @@ __global__ void kernel_YCbCr422_8u_C2P3R(uchar1* pSrc, int srcStep, uchar1* pDst
 	}
 }
 
-extern cudaError_t zppiYCbCr422_8u_C2P3R(
-	uchar1* pSrc, int srcStep, uchar1* pDst[3], int dstStep[3], int nWidth, int nHeight) {
+extern cudaError_t zppiYCbCr422_8u_C2P3R(uchar1* pSrc, int srcStep, uchar1* pDst[3], int dstStep[3], int nWidth, int nHeight) {
 	static int BLOCK_W = 16;
 	static int BLOCK_H = 16;
 
@@ -59,8 +58,7 @@ __global__ void kernel_CbCr422_CbCr420_8u_P2C2R(uchar1* pSrc0, int src0Step, uch
 	}
 }
 
-extern cudaError_t zppiCbCr422_CbCr420_8u_P2C2R(
-	uchar1* pSrc[2], int srcStep[2], uchar1* pDst, int dstStep, int nWidth, int nHeight) {
+extern cudaError_t zppiCbCr422_CbCr420_8u_P2C2R(uchar1* pSrc[2], int srcStep[2], uchar1* pDst, int dstStep, int nWidth, int nHeight) {
 	static int BLOCK_W = 16;
 	static int BLOCK_H = 16;
 

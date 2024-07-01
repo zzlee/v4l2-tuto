@@ -255,8 +255,7 @@ static int exp_dma_sg_vmap(struct dma_buf *dbuf, struct dma_buf_map *map)
 #endif
 }
 
-static int exp_dma_sg_mmap(struct dma_buf *dbuf,
-	struct vm_area_struct *vma) {
+static int exp_dma_sg_mmap(struct dma_buf *dbuf, struct vm_area_struct *vma) {
 	struct exp_dma_sg_buffer *buf = dbuf->priv;
 	int ret;
 

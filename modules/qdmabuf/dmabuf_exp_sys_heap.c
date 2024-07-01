@@ -123,8 +123,7 @@ static void exp_sys_heap_dma_buf_release(struct dma_buf *dmabuf) {
 	kfree(buffer);
 }
 
-static struct sg_table * exp_sys_heap_map_dma_buf(struct dma_buf_attachment *attachment,
-	enum dma_data_direction direction) {
+static struct sg_table * exp_sys_heap_map_dma_buf(struct dma_buf_attachment *attachment, enum dma_data_direction direction) {
 	struct exp_sys_heap_attachment *a = attachment->priv;
 	struct sg_table *table = a->table;
 	int ret;
@@ -140,17 +139,14 @@ static struct sg_table * exp_sys_heap_map_dma_buf(struct dma_buf_attachment *att
 	return table;
 }
 
-static void exp_sys_heap_unmap_dma_buf(struct dma_buf_attachment * attachment,
-	struct sg_table * table,
-	enum dma_data_direction direction) {
+static void exp_sys_heap_unmap_dma_buf(struct dma_buf_attachment * attachment, struct sg_table * table, enum dma_data_direction direction) {
 	struct exp_sys_heap_attachment *a = attachment->priv;
 
 	a->mapped = false;
 	dma_unmap_sgtable(attachment->dev, table, direction, 0);
 }
 
-static int exp_sys_heap_begin_cpu_access(struct dma_buf *dmabuf,
-						enum dma_data_direction direction)
+static int exp_sys_heap_begin_cpu_access(struct dma_buf *dmabuf, enum dma_data_direction direction)
 {
 	struct exp_sys_heap_buffer *buffer = dmabuf->priv;
 	struct exp_sys_heap_attachment *a;

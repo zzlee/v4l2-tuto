@@ -1,6 +1,7 @@
 #include "ZzLog.h"
 #include "ZzUtils.h"
 #include "ZzDeferredTasks.h"
+#include "ZzCUDA.h"
 
 #include <stdio.h>
 #include <string.h>
@@ -19,17 +20,12 @@
 #include <functional>
 #include <thread>
 #include <mutex>
+#include <condition_variable>
 #include <deque>
 #include <atomic>
 #include <memory>
 
 #include "qvio.h"
-
-#if BUILD_WITH_CUDA
-#include <cuda.h>
-#include <cuda_runtime_api.h>
-#include <cudaEGL.h>
-#endif // BUILD_WITH_CUDA
 
 #if BUILD_WITH_NPP
 #include <npp.h>
@@ -42,11 +38,6 @@
 #endif // BUILD_WITH_NVBUF
 
 ZZ_INIT_LOG("03_qvio-ctl")
-
-extern cudaError_t zppiYCbCr422_8u_C2P3R(
-	uchar1* pSrc, int srcStep, uchar1* pDst[3], int dstStep[3], int nWidth, int nHeight);
-extern cudaError_t zppiCbCr422_CbCr420_8u_P2C2R(
-	uchar1* pSrc[2], int srcStep[2], uchar1* pDst, int dstStep, int nWidth, int nHeight);
 
 namespace __03_qvio_ctl__ {
 
@@ -459,8 +450,9 @@ namespace __03_qvio_ctl__ {
 	void App::VidUserJob_STOP_STREAMING(const qvio_user_job& user_job, qvio_user_job_done& user_job_done) {
 		LOGD("%s(%d): ", __FUNCTION__, (int)user_job.sequence);
 
+		bVidSrcDone.store(true);
+
 		oDeferredTasks.AddTask([&]() {
-			bVidSrcDone.store(true);
 			oVidSrcThread.join();
 		});
 	}
@@ -474,17 +466,19 @@ namespace __03_qvio_ctl__ {
 		LOGD("%s(%d): index=%d", __FUNCTION__, (int)user_job.sequence, user_job.u.buf_done.index);
 #endif
 
-		std::unique_lock<std::mutex> lck (oSrcBufferQMutex, std::defer_lock);
 		v4l2_buffer src_buffer;
 
-		lck.lock();
-		if(oSrcBufferQ.empty()) {
-			src_buffer.index = -1;
-		} else {
-			src_buffer = oSrcBufferQ.front();
-			oSrcBufferQ.pop_front();
+		{
+			std::lock_guard<std::mutex> _{oSrcBufferQMutex};
+
+			if(oSrcBufferQ.empty()) {
+				LOGE("%s(%d): unexpected, oSrcBufferQ.empty()", __FUNCTION__, __LINE__);
+				src_buffer.index = -1;
+			} else {
+				src_buffer = oSrcBufferQ.front();
+				oSrcBufferQ.pop_front();
+			}
 		}
-		lck.unlock();
 
 		int nIndex = (int)user_job.u.buf_done.index;
 		if(nIndex >= 0 && nIndex < oMbuffers.size() &&
@@ -903,11 +897,11 @@ namespace __03_qvio_ctl__ {
 						break;
 					}
 
-					std::unique_lock<std::mutex> lck (oSrcBufferQMutex, std::defer_lock);
+					{
+						std::lock_guard<std::mutex> _{oSrcBufferQMutex};
 
-					lck.lock();
-					oSrcBufferQ.push_back(buffer);
-					lck.unlock();
+						oSrcBufferQ.push_back(buffer);
+					}
 
 					err = ioctl(nVidFd, QVID_IOC_BUF_DONE);
 					if(err) {

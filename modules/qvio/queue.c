@@ -1,7 +1,7 @@
 #define pr_fmt(fmt)     "[" KBUILD_MODNAME "]%s(#%d): " fmt, __func__, __LINE__
 
 #include "queue.h"
-#include "device.h"
+#include "video.h"
 #include "user_job.h"
 
 #include <media/videobuf2-v4l2.h>
@@ -27,7 +27,7 @@ static int __queue_setup(struct vb2_queue *queue,
 	struct device *alloc_devs[]) {
 	int err = 0;
 	struct qvio_queue* self = container_of(queue, struct qvio_queue, queue);
-	struct qvio_device* device = container_of(self, struct qvio_device, queue);
+	struct qvio_video* video = container_of(self, struct qvio_video, queue);
 
 	pr_info("+param %d %d\n", *num_buffers, *num_planes);
 
@@ -75,15 +75,14 @@ static int __queue_setup(struct vb2_queue *queue,
 		break;
 	}
 
-	err = qvio_user_job_queue_setup(&device->user_job_ctrl, *num_buffers);
+	err = qvio_user_job_queue_setup(&video->user_job_ctrl, *num_buffers);
 	if(err) {
 		pr_warn("qvio_user_job_queue_setup() failed, err=%d", err);
 	}
-	err = 0;
 
 	pr_info("-param %d %d [%d %d]\n", *num_buffers, *num_planes, sizes[0], sizes[1]);
 
-	return err;
+	return 0;
 
 err0:
 	return err;
@@ -104,31 +103,30 @@ static void __buf_init_done(void* user, struct qvio_user_job_done* user_job_done
 static int __buf_init(struct vb2_buffer *buffer) {
 	int err;
 	struct qvio_queue* self = vb2_get_drv_priv(buffer->vb2_queue);
-	struct qvio_device* device = container_of(self, struct qvio_device, queue);
+	struct qvio_video* video = container_of(self, struct qvio_video, queue);
 	struct vb2_v4l2_buffer *vbuf = to_vb2_v4l2_buffer(buffer);
 	struct qvio_queue_buffer* buf = container_of(vbuf, struct qvio_queue_buffer, vb);
 
 	pr_info("param: %p %p %d %p\n", self, vbuf, vbuf->vb2_buf.index, buf);
 
-	err = qvio_user_job_buf_init(&device->user_job_ctrl, buffer, buffer, __buf_init_done);
+	err = qvio_user_job_buf_init(&video->user_job_ctrl, buffer, buffer, __buf_init_done);
 	if(err) {
 		pr_warn("qvio_user_job_buf_init() failed, err=%d", err);
 	}
-	err = 0;
 
-	return err;
+	return 0;
 }
 
 static void __buf_cleanup(struct vb2_buffer *buffer) {
 	int err;
 	struct qvio_queue* self = vb2_get_drv_priv(buffer->vb2_queue);
-	struct qvio_device* device = container_of(self, struct qvio_device, queue);
+	struct qvio_video* video = container_of(self, struct qvio_video, queue);
 	struct vb2_v4l2_buffer *vbuf = to_vb2_v4l2_buffer(buffer);
 	struct qvio_queue_buffer* buf = container_of(vbuf, struct qvio_queue_buffer, vb);
 
 	pr_info("param: %p %p %d %p\n", self, vbuf, vbuf->vb2_buf.index, buf);
 
-	err = qvio_user_job_buf_cleanup(&device->user_job_ctrl, buffer);
+	err = qvio_user_job_buf_cleanup(&video->user_job_ctrl, buffer);
 	if(err) {
 		pr_warn("qvio_user_job_buf_cleanup() failed, err=%d", err);
 	}
@@ -210,9 +208,7 @@ static int __buf_prepare(struct vb2_buffer *buffer) {
 	if(vbuf->field == V4L2_FIELD_ANY)
 		vbuf->field = V4L2_FIELD_NONE;
 
-	err = 0;
-
-	return err;
+	return 0;
 
 err0:
 	return err;
@@ -236,30 +232,28 @@ static void __buf_queue(struct vb2_buffer *buffer) {
 static int __start_streaming(struct vb2_queue *queue, unsigned int count) {
 	int err;
 	struct qvio_queue* self = container_of(queue, struct qvio_queue, queue);
-	struct qvio_device* device = container_of(self, struct qvio_device, queue);
+	struct qvio_video* video = container_of(self, struct qvio_video, queue);
 
 	pr_info("\n");
 
-	err = qvio_user_job_start_streaming(&device->user_job_ctrl);
+	err = qvio_user_job_start_streaming(&video->user_job_ctrl);
 	if(err) {
 		pr_warn("qvio_user_job_start_streaming() failed, err=%d", err);
 	}
-	err = 0;
 
 	self->sequence = 0;
-	err = 0;
 
-	return err;
+	return 0;
 }
 
 static void __stop_streaming(struct vb2_queue *queue) {
 	int err;
 	struct qvio_queue* self = container_of(queue, struct qvio_queue, queue);
-	struct qvio_device* device = container_of(self, struct qvio_device, queue);
+	struct qvio_video* video = container_of(self, struct qvio_video, queue);
 
 	pr_info("\n");
 
-	err = qvio_user_job_stop_streaming(&device->user_job_ctrl);
+	err = qvio_user_job_stop_streaming(&video->user_job_ctrl);
 	if(err) {
 		pr_warn("qvio_user_job_stop_streaming() failed, err=%d", err);
 	}
@@ -324,29 +318,23 @@ struct vb2_queue* qvio_queue_get_vb2_queue(struct qvio_queue* self) {
 }
 
 int qvio_queue_s_fmt(struct qvio_queue* self, struct v4l2_format *format) {
-	int err;
-
 	pr_info("\n");
 
 	memcpy(&self->current_format, format, sizeof(struct v4l2_format));
-	err = 0;
 
-	return err;
+	return 0;
 }
 
 int qvio_queue_g_fmt(struct qvio_queue* self, struct v4l2_format *format) {
-	int err;
-
 	pr_info("\n");
 
 	memcpy(format, &self->current_format, sizeof(struct v4l2_format));
-	err = 0;
 
-	return err;
+	return 0;
 }
 
 int qvio_queue_try_buf_done(struct qvio_queue* self) {
-	struct qvio_device* device = container_of(self, struct qvio_device, queue);
+	struct qvio_video* video = container_of(self, struct qvio_video, queue);
 	struct qvio_queue_buffer* buf;
 	int err;
 
@@ -375,15 +363,14 @@ int qvio_queue_try_buf_done(struct qvio_queue* self) {
 	pr_info("vb2_buffer_done: %p %d\n", buf, buf->vb.vb2_buf.index);
 #endif
 
-	err = qvio_user_job_buf_done(&device->user_job_ctrl, &buf->vb.vb2_buf);
+	err = qvio_user_job_buf_done(&video->user_job_ctrl, &buf->vb.vb2_buf);
 	if(err) {
 		pr_warn("qvio_user_job_buf_done() failed, err=%d", err);
 	}
-	err = 0;
 
 	vb2_buffer_done(&buf->vb.vb2_buf, VB2_BUF_STATE_DONE);
 
-	return err;
+	return 0;
 
 err0:
 	return err;

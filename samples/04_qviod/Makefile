@@ -4,7 +4,7 @@ BUILD_WITH_NVBUF:=ON
 
 include ../Rules.mk
 
-APP := 03_qvio-ctl
+APP := 04_qviod
 
 SRCS := \
 	main.cpp \

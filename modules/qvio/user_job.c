@@ -56,6 +56,8 @@ err0:
 }
 
 void qvio_user_job_init(struct qvio_user_job_ctrl* self) {
+	pr_info("\n");
+
 	atomic_set(&self->sequence, 0);
 
 	init_waitqueue_head(&self->job_wq);
@@ -262,16 +264,17 @@ int qvio_user_job_get_fd(struct qvio_user_job_ctrl* self) {
 
 	fd = get_unused_fd_flags(O_RDONLY | O_CLOEXEC);
 	if (fd < 0) {
+		pr_err("get_unused_fd_flags() failed, fd=%d\n", fd);
+
 		err = fd;
 		goto err0;
 	}
 
-	file = anon_inode_getfile("qvio-user-job",
-				  &qvio_user_job_fileops,
-				  self,
-				  O_RDONLY | O_CLOEXEC);
+	file = anon_inode_getfile("qvio-user-job", &qvio_user_job_fileops, self, O_RDONLY | O_CLOEXEC);
 	if (IS_ERR(file)) {
 		err = PTR_ERR(file);
+		pr_err("anon_inode_getfile() failed, err=%d\n", err);
+
 		goto err1;
 	}
 
