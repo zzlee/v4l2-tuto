@@ -2139,7 +2139,6 @@ static int irq_legacy_setup(struct xdma_dev *xdev, struct pci_dev *pdev)
 		return -EINVAL;
 	}
 
-pr_info("ZZ: val=%d\n", (int)val);
 	dbg_init("Legacy Interrupt register value = %d\n", val);
 	if (val > 1) {
 		val--;
@@ -2157,7 +2156,6 @@ pr_info("ZZ: val=%d\n", (int)val);
 		write_register(w, reg + 0x4, 0x20A4);
 	}
 
-pr_info("ZZ: pdev->irq=%d\n", (int)pdev->irq);
 	xdev->irq_line = (int)pdev->irq;
 	rv = request_irq(pdev->irq, xdma_isr, IRQF_SHARED, xdev->mod_name,
 			 xdev);
@@ -2184,8 +2182,6 @@ static int irq_setup(struct xdma_dev *xdev, struct pci_dev *pdev)
 {
 	pci_keep_intx_enabled(pdev);
 
-pr_info("ZZ: xdev->msix_enabled=%d, xdev->msi_enabled=%d\n",
-	(int)xdev->msix_enabled, (int)xdev->msi_enabled);
 	if (xdev->msix_enabled) {
 		int rv = irq_msix_channel_setup(xdev);
 
@@ -2505,7 +2501,7 @@ static int transfer_queue(struct xdma_engine *engine,
 	/* engine is idle? */
 	if (!engine->running) {
 		/* start engine */
-		dbg_tfr("%s(): starting %s engine.\n", __func__, engine->name);
+		pr_info("%s(): starting %s engine.\n", __func__, engine->name);
 		transfer_started = engine_start(engine);
 		if (!transfer_started) {
 			pr_err("Failed to start dma engine\n");
@@ -3810,8 +3806,10 @@ ssize_t xdma_xfer_submit_nowait(void *cb_hndl, void *dev_hndl, int channel,
 	if (!dev_hndl)
 		return -EINVAL;
 
+#if 0
 	if (debug_check_dev_hndl(__func__, xdev->pdev, dev_hndl) < 0)
 		return -EINVAL;
+#endif
 
 	if (write == 1) {
 		if (channel >= xdev->h2c_channel_max) {
@@ -4312,7 +4310,7 @@ static int probe_for_engine(struct xdma_dev *xdev, enum dma_data_direction dir,
 		return -EINVAL;
 	}
 
-	dbg_init("found AXI %s %d engine, reg. off 0x%x, id 0x%x,0x%x.\n",
+	pr_info("found AXI %s %d engine, reg. off 0x%x, id 0x%x,0x%x.\n",
 		 dir == DMA_TO_DEVICE ? "H2C" : "C2H", channel, offset,
 		 engine_id, channel_id);
 

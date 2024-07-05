@@ -22,11 +22,13 @@ static int __init qvio_mod_init(void)
 
 	pr_info("%s", version);
 
+#if 0
 	err = qvio_device_platform_register();
 	if (err != 0) {
 		pr_err("qvio_device_platform_register() failed, err=%d\n", err);
 		goto err0;
 	}
+#endif
 
 	err = qvio_device_pci_register();
 	if (err != 0) {
@@ -44,8 +46,11 @@ static void __exit qvio_mod_exit(void)
 {
 	pr_info("%s", version);
 
-	qvio_device_platform_unregister();
 	qvio_device_pci_unregister();
+
+#if 0
+	qvio_device_platform_unregister();
+#endif
 }
 
 module_init(qvio_mod_init);

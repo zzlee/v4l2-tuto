@@ -18,6 +18,7 @@ qvio-objs += \
 	xdma_thread.o
 
 ccflags-y += \
+-O3 \
 -DQVIO_MODULE_VERSION=\"$(MODULE_VERSION)\"
 
 all:

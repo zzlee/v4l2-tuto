@@ -28,6 +28,57 @@ namespace ZzUtils {
 		}
 	}
 
+	ZzStatBitRate::ZzStatBitRate() {
+		stats_duration = 1000000LL;
+	}
+
+	void ZzStatBitRate::Reset() {
+		last_ts = 0;
+		cur_ts = 0;
+		acc_ticks = 0;
+		acc_bits = 0;
+		max_bits = 0;
+	}
+
+	bool ZzStatBitRate::Log(int64_t bits, int64_t ts) {
+		acc_bits += bits;
+
+		if(bits > max_bits) {
+			max_bits = bits;
+		}
+
+		++acc_ticks;
+
+		int64_t duration = ts - last_ts;
+		if(duration > stats_duration) {
+			const char* units_name = "bps";
+			double factor_den;
+			if(acc_bits < 1024LL * 1024LL) {
+				units_name = "Kibps";
+				factor_den = 1024.0;
+			} else if(acc_bits < 1024LL * 1024LL * 1024LL) {
+				units_name = "Mibps";
+				factor_den = (1024.0 * 1024.0);
+			} else {
+				units_name = "Gibps";
+				factor_den = (1024.0 * 1024.0 * 1024.0);
+			}
+			double freq = 1000000.0 / duration;
+
+			LOGD("%s: %.2fFPS, %.2f%s, max %.2fKibits .", log_prefix.c_str(), acc_ticks * freq,
+				(acc_bits * freq) / factor_den, units_name, max_bits / 1024.0);
+
+			last_ts = ts;
+			cur_ts = 0;
+			acc_ticks = 0;
+			acc_bits = 0;
+
+			return true;
+		}
+
+		return false;
+	}
+
 	void TestLoop(std::function<int (int)> idle, int64_t dur_num, int64_t dur_den) {
 		int err;
 
@@ -65,6 +116,15 @@ namespace ZzUtils {
 			now = _clk();
 			nTick++;
 
+			if(err == 0) {
+				err = idle(-1);
+				if(err) {
+					break;
+				}
+
+				continue;
+			}
+
 			if (FD_ISSET(fd_stdin, &readfds)) {
 				int ch = getchar();
 
@@ -72,13 +132,6 @@ namespace ZzUtils {
 					break;
 
 				err = idle(ch);
-				if(err) {
-					break;
-				}
-			}
-
-			if(err == 0) {
-				err = idle(-1);
 				if(err) {
 					break;
 				}

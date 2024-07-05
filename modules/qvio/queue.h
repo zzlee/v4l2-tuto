@@ -5,13 +5,20 @@
 #include <linux/videodev2.h>
 
 struct qvio_queue {
-	struct kref ref;
+	struct device* dev;
 	struct vb2_queue queue;
 	struct mutex queue_mutex;
 	struct list_head buffers;
 	struct mutex buffers_mutex;
+	struct list_head pending_buffers;
+	struct mutex pending_buffers_mutex;
 	struct v4l2_format current_format;
 	__u32 sequence;
+	int halign, valign;
+
+	// xdma
+	struct xdma_dev *xdev;
+	int channel;
 };
 
 void qvio_queue_init(struct qvio_queue* self);

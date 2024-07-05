@@ -1,5 +1,6 @@
 #include "ZzLog.h"
 #include "ZzUtils.h"
+#include "ZzClock.h"
 
 #include <stdio.h>
 #include <string.h>
@@ -13,28 +14,30 @@
 #include <linux/videodev2.h>
 #include <linux/media.h>
 #include <linux/version.h>
+#include <linux/limits.h>
 #include <vector>
+#include <fstream>
 
 #include "qvio.h"
 
 ZZ_INIT_LOG("01_v4l-ctl")
 
-namespace __01_v4l_ctl__ {
+using namespace __zz_clock__;
 
+namespace __01_v4l_ctl__ {
 	struct App {
 		int argc;
 		char **argv;
 
 		ZzUtils::FreeStack oFreeStack;
 		int nVidFd;
-		int nVidCtrlFd;
 		int nMemory;
 		int nBufType;
 		int nPixelFormat;
 		int nWidth;
 		int nHeight;
-		int nHorStride;
-		int nVerStride;
+		int nHAlign;
+		int nVAlign;
 		int nBuffers;
 
 		struct mmap_buffer {
@@ -54,7 +57,6 @@ namespace __01_v4l_ctl__ {
 		int Run();
 
 		void OpenVidRx();
-		void OpenVidTx();
 		void VidSFmt();
 		void VidReqBufs();
 		void VidQueryBufs();
@@ -65,8 +67,9 @@ namespace __01_v4l_ctl__ {
 		void VidStreamOn();
 		void VidStreamOff();
 		void VidQbufs();
-		void VidWaitForBuffer();
-		void VidBufDone(int nCount);
+		void VidWaitForBuffer(int nFrames);
+		void VidBufDone();
+		void VidMeasureFPS();
 	};
 
 	App::App(int argc, char **argv) : argc(argc), argv(argv) {
@@ -84,18 +87,17 @@ namespace __01_v4l_ctl__ {
 
 		switch(1) { case 1:
 			nVidFd = -1;
-			nVidCtrlFd = -1;
 			nMemory = V4L2_MEMORY_MMAP;
-			nBufType = V4L2_BUF_TYPE_VIDEO_CAPTURE_MPLANE;
-			nPixelFormat = V4L2_PIX_FMT_NV12;
-			nWidth = 4096;
-			nHeight = 2160;
-			nHorStride = ZZ_ALIGN(nWidth, 0x1000);
-			nVerStride = ZZ_ALIGN(nHeight, 0x1000);
+			nBufType = V4L2_BUF_TYPE_VIDEO_CAPTURE;
+			nPixelFormat = V4L2_PIX_FMT_YUYV;
+			nWidth = 1920;
+			nHeight = 1080;
+			nHAlign = ZZ_ALIGN(nWidth, 0x40);
+			nVAlign = ZZ_ALIGN(nHeight, 0x1);
 			nBuffers = 4;
 
 			LOGD("param: %d %d %d %d %d", nMemory, nBufType, nWidth, nHeight,
-				nHorStride, nVerStride, nBuffers);
+				nHAlign, nVAlign, nBuffers);
 
 			ZzUtils::TestLoop([&](int ch) -> int {
 				int err = 0;
@@ -106,11 +108,6 @@ namespace __01_v4l_ctl__ {
 				case 'r':
 				case 'R':
 					OpenVidRx();
-					break;
-
-				case 't':
-				case 'T':
-					OpenVidTx();
 					break;
 
 				case '1':
@@ -134,38 +131,28 @@ namespace __01_v4l_ctl__ {
 					break;
 
 				case '6':
-					MmapWriteTest();
+					VidQbufs();
 					break;
 
 				case '7':
-					MmapReadTest();
-					break;
-
-				case '8':
 					VidStreamOn();
 					break;
 
-				case '9':
+				case '8':
 					VidStreamOff();
 					break;
 
+				case '9':
+					VidBufDone();
+					break;
+
 				case '0':
-					VidQbufs();
+					VidMeasureFPS();
 					break;
 
 				case 'a':
 				case 'A':
-					VidWaitForBuffer();
-					break;
-
-				case 'b':
-				case 'B':
-					VidBufDone(1);
-					break;
-
-				case 'c':
-				case 'C':
-					VidBufDone(10);
+					VidWaitForBuffer(1);
 					break;
 				}
 
@@ -191,7 +178,7 @@ namespace __01_v4l_ctl__ {
 				break;
 			}
 
-			nVidFd = open("/dev/video2", O_RDWR | O_NONBLOCK);
+			nVidFd = open("/dev/video0", O_RDWR | O_NONBLOCK);
 			if(nVidFd == -1) {
 				err = errno;
 				LOGE("%s(%d): open() failed, err=%d", __FUNCTION__, __LINE__, err);
@@ -209,78 +196,6 @@ namespace __01_v4l_ctl__ {
 			};
 
 			LOGD("nVidFd=%d", nVidFd);
-			nBufType = V4L2_BUF_TYPE_VIDEO_CAPTURE_MPLANE;
-
-			nVidCtrlFd = open("/dev/qvio0", O_RDWR);
-			if(nVidCtrlFd == -1) {
-				err = errno;
-				LOGE("%s(%d): open() failed, err=%d", __FUNCTION__, __LINE__, err);
-				break;
-			}
-			oFreeStack += [&]() {
-				int err;
-
-				err = close(nVidCtrlFd);
-				if(err) {
-					err = errno;
-					LOGE("%s(%d): close() failed, err=%d", __FUNCTION__, __LINE__, err);
-				}
-				nVidCtrlFd = -1;
-			};
-
-			LOGD("nVidCtrlFd=%d", nVidCtrlFd);
-		}
-	}
-
-	void App::OpenVidTx() {
-		int err;
-
-		LOGD("%s(%d):...", __FUNCTION__, __LINE__);
-
-		switch(1) { case 1:
-			if(nVidFd != -1) {
-				LOGE("%s(%d): unexpected value, nVidFd=%d", __FUNCTION__, __LINE__, nVidFd);
-				break;
-			}
-
-			nVidFd = open("/dev/video3", O_RDWR | O_NONBLOCK);
-			if(nVidFd == -1) {
-				err = errno;
-				LOGE("%s(%d): open() failed, err=%d", __FUNCTION__, __LINE__, err);
-				break;
-			}
-			oFreeStack += [&]() {
-				int err;
-
-				err = close(nVidFd);
-				if(err) {
-					err = errno;
-					LOGE("%s(%d): close() failed, err=%d", __FUNCTION__, __LINE__, err);
-				}
-				nVidFd = -1;
-			};
-
-			LOGD("nVidFd=%d", nVidFd);
-			nBufType = V4L2_BUF_TYPE_VIDEO_OUTPUT_MPLANE;
-
-			nVidCtrlFd = open("/dev/qvio1", O_RDWR);
-			if(nVidCtrlFd == -1) {
-				err = errno;
-				LOGE("%s(%d): open() failed, err=%d", __FUNCTION__, __LINE__, err);
-				break;
-			}
-			oFreeStack += [&]() {
-				int err;
-
-				err = close(nVidCtrlFd);
-				if(err) {
-					err = errno;
-					LOGE("%s(%d): close() failed, err=%d", __FUNCTION__, __LINE__, err);
-				}
-				nVidCtrlFd = -1;
-			};
-
-			LOGD("nVidCtrlFd=%d", nVidCtrlFd);
 		}
 	}
 
@@ -293,21 +208,14 @@ namespace __01_v4l_ctl__ {
 			v4l2_format format;
 			memset(&format, 0, sizeof(v4l2_format));
 			format.type = nBufType;
-			format.fmt.pix_mp.width = nWidth;
-			format.fmt.pix_mp.height = nHeight;
-			format.fmt.pix_mp.pixelformat = nPixelFormat;
-			format.fmt.pix_mp.field = V4L2_FIELD_NONE;
-			format.fmt.pix_mp.num_planes = 2;
-			format.fmt.pix_mp.plane_fmt[0].sizeimage = nHorStride * nHeight;
-			format.fmt.pix_mp.plane_fmt[0].bytesperline = nHorStride;
-			format.fmt.pix_mp.plane_fmt[1].sizeimage = nHorStride * nHeight / 2;
-			format.fmt.pix_mp.plane_fmt[1].bytesperline = nHorStride;
+			format.fmt.pix.width = nWidth;
+			format.fmt.pix.height = nHeight;
+			format.fmt.pix.pixelformat = nPixelFormat;
+			format.fmt.pix.field = V4L2_FIELD_NONE;
 
-			LOGD("+param: %d %d %d %d %d", (int)format.fmt.pix_mp.num_planes,
-				(int)format.fmt.pix_mp.plane_fmt[0].sizeimage,
-				(int)format.fmt.pix_mp.plane_fmt[0].bytesperline,
-				(int)format.fmt.pix_mp.plane_fmt[1].sizeimage,
-				(int)format.fmt.pix_mp.plane_fmt[1].bytesperline);
+			LOGD("+param: %d %d",
+				(int)format.fmt.pix.sizeimage,
+				(int)format.fmt.pix.bytesperline);
 
 			err = ioctl(nVidFd, VIDIOC_S_FMT, &format);
 			if(err) {
@@ -316,11 +224,9 @@ namespace __01_v4l_ctl__ {
 				break;
 			}
 
-			LOGD("-param: %d %d %d %d %d", (int)format.fmt.pix_mp.num_planes,
-				(int)format.fmt.pix_mp.plane_fmt[0].sizeimage,
-				(int)format.fmt.pix_mp.plane_fmt[0].bytesperline,
-				(int)format.fmt.pix_mp.plane_fmt[1].sizeimage,
-				(int)format.fmt.pix_mp.plane_fmt[1].bytesperline);
+			LOGD("-param: %d %d",
+				(int)format.fmt.pix.sizeimage,
+				(int)format.fmt.pix.bytesperline);
 		}
 	}
 
@@ -354,13 +260,10 @@ namespace __01_v4l_ctl__ {
 		switch(1) { case 1:
 			for(int i = 0;i < nBuffers;i++) {
 				v4l2_buffer buffer;
-				v4l2_plane planes[2];
 				memset(&buffer, 0, sizeof(v4l2_buffer));
 				buffer.index = i;
 				buffer.type = nBufType;
 				buffer.memory = nMemory;
-				buffer.m.planes = planes;
-				buffer.length = 2;
 				err = ioctl(nVidFd, VIDIOC_QUERYBUF, &buffer);
 				if(err) {
 					err = errno;
@@ -368,9 +271,8 @@ namespace __01_v4l_ctl__ {
 					break;
 				}
 
-				LOGD("BUFFER[%d]: length=%d [%d %d] [%d %d]", buffer.index, buffer.length,
-					(int)buffer.m.planes[0].length, (int)buffer.m.planes[1].length,
-					(int)buffer.m.planes[0].m.mem_offset, (int)buffer.m.planes[1].m.mem_offset);
+				LOGD("BUFFER[%d]: length=%d offset=%d",
+					buffer.index, buffer.length, (int)buffer.m.offset);
 			}
 		}
 	}
@@ -388,13 +290,10 @@ namespace __01_v4l_ctl__ {
 
 			for(int i = 0;i < nBuffers;i++) {
 				v4l2_buffer buffer;
-				v4l2_plane planes[2];
 				memset(&buffer, 0, sizeof(v4l2_buffer));
 				buffer.index = i;
 				buffer.type = nBufType;
 				buffer.memory = nMemory;
-				buffer.m.planes = planes;
-				buffer.length = 2;
 				err = ioctl(nVidFd, VIDIOC_QUERYBUF, &buffer);
 				if(err) {
 					err = errno;
@@ -404,10 +303,10 @@ namespace __01_v4l_ctl__ {
 
 				mmap_buffer mbuffer;
 				memset(&mbuffer, 0, sizeof(mmap_buffer));
-				for(int p = 0;p < 2;p++) {
-					size_t nLength = (size_t)buffer.m.planes[p].length;
+				{
+					size_t nLength = (size_t)buffer.length;
 					void* pVirAddr = mmap(NULL, nLength, PROT_READ | PROT_WRITE, MAP_SHARED,
-						nVidFd, (off_t)buffer.m.planes[p].m.mem_offset);
+						nVidFd, (off_t)buffer.m.offset);
 					if(pVirAddr == MAP_FAILED) {
 						LOGE("%s(%d): mmap() failed, err=%d", __FUNCTION__, __LINE__, err);
 						break;
@@ -422,16 +321,15 @@ namespace __01_v4l_ctl__ {
 						}
 					};
 
-					mbuffer.pVirAddr[p] = (intptr_t)pVirAddr;
-					mbuffer.nLength[p] = buffer.m.planes[p].length;
+					mbuffer.pVirAddr[0] = (intptr_t)pVirAddr;
+					mbuffer.nLength[0] = nLength;
 				}
 
 				oMbuffers.push_back(mbuffer);
 
-				LOGD("BUFFER[%d]: length=%d [%d %d] [%d %d] [%p %p]", buffer.index, buffer.length,
-					(int)buffer.m.planes[0].length, (int)buffer.m.planes[1].length,
-					(int)buffer.m.planes[0].m.mem_offset, (int)buffer.m.planes[1].m.mem_offset,
-					mbuffer.pVirAddr[0], mbuffer.pVirAddr[1]);
+				LOGD("BUFFER[%d]: length=%d offset=%d [%p]",
+					buffer.index, buffer.length, (int)buffer.m.offset,
+					mbuffer.pVirAddr[0]);
 			}
 		}
 	}
@@ -497,13 +395,10 @@ namespace __01_v4l_ctl__ {
 
 			for(int i = 0;i < nBuffers;i++) {
 				v4l2_buffer buffer;
-				v4l2_plane planes[2];
 				memset(&buffer, 0, sizeof(v4l2_buffer));
 				buffer.index = i;
 				buffer.type = nBufType;
 				buffer.memory = nMemory;
-				buffer.m.planes = planes;
-				buffer.length = 2;
 				err = ioctl(nVidFd, VIDIOC_QUERYBUF, &buffer);
 				if(err) {
 					err = errno;
@@ -513,13 +408,13 @@ namespace __01_v4l_ctl__ {
 
 				exp_buffer ebuffer;
 				memset(&ebuffer, 0, sizeof(exp_buffer));
-				for(int p = 0;p < 2;p++) {
+				{
 					struct v4l2_exportbuffer expbuf;
 
 					memset(&expbuf, 0, sizeof(expbuf));
 					expbuf.type = nBufType;
 					expbuf.index = i;
-					expbuf.plane = p;
+					expbuf.plane = 0;
 					err = ioctl(nVidFd, VIDIOC_EXPBUF, &expbuf);
 					if(err) {
 						err = errno;
@@ -536,14 +431,14 @@ namespace __01_v4l_ctl__ {
 						}
 					};
 
-					ebuffer.nFd[p] = expbuf.fd;
+					ebuffer.nFd[0] = expbuf.fd;
 				}
 
 				oDmaBufs.push_back(ebuffer);
 
-				LOGD("BUFFER[%d]: length=%d [%d %d] [%d %d]", buffer.index, buffer.length,
-					(int)buffer.m.planes[0].length, (int)buffer.m.planes[1].length,
-					ebuffer.nFd[0], ebuffer.nFd[1]);
+				LOGD("BUFFER[%d]: length=%d offset=%d [%d]",
+					buffer.index, buffer.length, (int)buffer.m.offset,
+					ebuffer.nFd[0]);
 			}
 		}
 	}
@@ -578,6 +473,20 @@ namespace __01_v4l_ctl__ {
 		}
 	}
 
+	void App::VidBufDone() {
+		int err;
+
+		LOGD("%s(%d):...", __FUNCTION__, __LINE__);
+
+		switch(1) { case 1:
+			err = ioctl(nVidFd, QVID_IOC_BUF_DONE);
+			if(err) {
+				LOGE("%s(%d): ioctl(QVID_IOC_BUF_DONE) failed, err=%d", __FUNCTION__, __LINE__, err);
+				break;
+			}
+		}
+	}
+
 	void App::VidQbufs() {
 		int err;
 
@@ -586,13 +495,10 @@ namespace __01_v4l_ctl__ {
 		switch(1) { case 1:
 			for(int i = 0;i < nBuffers;i++) {
 				v4l2_buffer buffer;
-				v4l2_plane planes[2];
 				memset(&buffer, 0, sizeof(v4l2_buffer));
 				buffer.index = i;
 				buffer.type = nBufType;
 				buffer.memory = nMemory;
-				buffer.m.planes = planes;
-				buffer.length = 2;
 				err = ioctl(nVidFd, VIDIOC_QUERYBUF, &buffer);
 				if(err) {
 					err = errno;
@@ -610,17 +516,22 @@ namespace __01_v4l_ctl__ {
 		}
 	}
 
-	void App::VidWaitForBuffer() {
+	void App::VidWaitForBuffer(int nFrames) {
 		int err;
 
 		LOGD("%s(%d):...", __FUNCTION__, __LINE__);
 
-		LOGW("Wait for test...");
+		int fd_stdin = 0; // stdin
+		int64_t beg = _clk();
+
+		LOGW("Wait for test... %d", nFrames);
 		while(true) {
 			fd_set readfds;
 			FD_ZERO(&readfds);
 
 			int fd_max = -1;
+			if(fd_stdin > fd_max) fd_max = fd_stdin;
+			FD_SET(fd_stdin, &readfds);
 			if(nVidFd > fd_max) fd_max = nVidFd;
 			FD_SET(nVidFd, &readfds);
 
@@ -630,15 +541,19 @@ namespace __01_v4l_ctl__ {
 				break;
 			}
 
+			if (FD_ISSET(fd_stdin, &readfds)) {
+				int ch = getchar();
+
+				if(ch == 'q')
+					break;
+			}
+
 			if (FD_ISSET(nVidFd, &readfds)) {
 				v4l2_buffer buffer;
-				v4l2_plane planes[2];
 
 				memset(&buffer, 0, sizeof(v4l2_buffer));
 				buffer.type = nBufType;
 				buffer.memory = nMemory;
-				buffer.m.planes = planes;
-				buffer.length = 2;
 				err = ioctl(nVidFd, VIDIOC_DQBUF, &buffer);
 				if(err) {
 					LOGE("%s(%d): ioctl(VIDIOC_DQBUF) failed! err = %d", __FUNCTION__, __LINE__, err);
@@ -646,6 +561,15 @@ namespace __01_v4l_ctl__ {
 				}
 
 				LOGD("VIDIOC_DQBUF, buffer.index=%d", buffer.index);
+
+				{
+					mmap_buffer mbuffer = oMbuffers[buffer.index];
+
+					char fn[PATH_MAX];
+					sprintf(fn, "buffer-%d.bin", buffer.index);
+					std::ofstream ofs(fn, std::ios::binary);
+					ofs.write((const char*)mbuffer.pVirAddr[0], mbuffer.nLength[0]);
+				}
 
 				buffer.flags = 0;
 				err = ioctl(nVidFd, VIDIOC_QBUF, &buffer);
@@ -655,24 +579,90 @@ namespace __01_v4l_ctl__ {
 					break;
 				}
 
-				break;
+				if(--nFrames <= 0)
+					break;
 			}
 		}
+
+		int64_t fini = _clk();
+		LOGW("Test done. %.4fs", (fini - beg) / 1000000.0);
 	}
 
-	void App::VidBufDone(int nCount) {
+	void App::VidMeasureFPS() {
 		int err;
 
 		LOGD("%s(%d):...", __FUNCTION__, __LINE__);
 
-		for(int i = 0;i < nCount;i++) {
-			err = ioctl(nVidCtrlFd, QVID_IOC_BUF_DONE);
-			if(err) {
-				err = errno;
-				LOGE("%s(%d): ioctl(QVID_IOC_BUF_DONE) failed, err=%d", __FUNCTION__, __LINE__, err);
+		int fd_stdin = 0; // stdin
+		int64_t beg = _clk();
+		int64_t now = beg;
+
+		ZzUtils::ZzStatBitRate bitrate;
+		bitrate.log_prefix = "vsrc";
+		bitrate.Reset();
+
+		ZzUtils::ZzStatBitRate ticks;
+		ticks.log_prefix = "ticks";
+		ticks.Reset();
+
+		VidStreamOn();
+
+		LOGW("Wait for test...");
+		while(true) {
+			fd_set readfds;
+			FD_ZERO(&readfds);
+
+			int fd_max = -1;
+			if(fd_stdin > fd_max) fd_max = fd_stdin;
+			FD_SET(fd_stdin, &readfds);
+			if(nVidFd > fd_max) fd_max = nVidFd;
+			FD_SET(nVidFd, &readfds);
+
+			err = select(fd_max + 1, &readfds, NULL, NULL, NULL);
+			if (err < 0) {
+				LOGE("%s(%d): select() failed! err = %d", __FUNCTION__, __LINE__, err);
 				break;
 			}
+
+			now = _clk();
+			ticks.Log(1, now);
+
+			if (FD_ISSET(fd_stdin, &readfds)) {
+				int ch = getchar();
+
+				if(ch == 'q')
+					break;
+			}
+
+			if (FD_ISSET(nVidFd, &readfds)) {
+				v4l2_buffer buffer;
+
+				memset(&buffer, 0, sizeof(v4l2_buffer));
+				buffer.type = nBufType;
+				buffer.memory = nMemory;
+				err = ioctl(nVidFd, VIDIOC_DQBUF, &buffer);
+				if(err) {
+					LOGE("%s(%d): ioctl(VIDIOC_DQBUF) failed! err = %d", __FUNCTION__, __LINE__, err);
+					break;
+				}
+
+				mmap_buffer mbuffer = oMbuffers[buffer.index];
+				bitrate.Log(mbuffer.nLength[0] * 8, now);
+
+				buffer.flags = 0;
+				err = ioctl(nVidFd, VIDIOC_QBUF, &buffer);
+				if(err) {
+					err = errno;
+					LOGE("%s(%d): ioctl(VIDIOC_QBUF) failed, err=%d", __FUNCTION__, __LINE__, err);
+					break;
+				}
+			}
 		}
+
+		VidStreamOff();
+
+		int64_t fini = _clk();
+		LOGW("Test done. %.4fs", (fini - beg) / 1000000.0);
 	}
 }
 

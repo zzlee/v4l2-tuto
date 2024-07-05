@@ -46,7 +46,7 @@ namespace __04_qviod__ {
 
 		ZzUtils::FreeStack oFreeStack;
 		int nVidFd;
-		int nVidCtrlFd;
+		int nVidUserJobFd;
 
 		App(int argc, char **argv);
 		~App();
@@ -85,7 +85,7 @@ namespace __04_qviod__ {
 
 		switch(1) { case 1:
 			nVidFd = -1;
-			nVidCtrlFd = -1;
+			nVidUserJobFd = -1;
 
 			OpenVidRx();
 			VidUserJobHandling();
@@ -128,7 +128,7 @@ namespace __04_qviod__ {
 
 			LOGD("nVidFd=%d", nVidFd);
 
-			err = ioctl(nVidFd, QVID_IOC_USER_JOB_FD, &nVidCtrlFd);
+			err = ioctl(nVidFd, QVID_IOC_USER_JOB_FD, &nVidUserJobFd);
 			if(err) {
 				err = errno;
 				LOGE("%s(%d): ioctl(QVID_IOC_USER_JOB_FD) failed, err=%d", __FUNCTION__, __LINE__, err);
@@ -137,15 +137,15 @@ namespace __04_qviod__ {
 			oFreeStack += [&]() {
 				int err;
 
-				err = close(nVidCtrlFd);
+				err = close(nVidUserJobFd);
 				if(err) {
 					err = errno;
 					LOGE("%s(%d): close() failed, err=%d", __FUNCTION__, __LINE__, err);
 				}
-				nVidCtrlFd = -1;
+				nVidUserJobFd = -1;
 			};
 
-			LOGD("nVidCtrlFd=%d", nVidCtrlFd);
+			LOGD("nVidUserJobFd=%d", nVidUserJobFd);
 		}
 	}
 
@@ -171,9 +171,9 @@ namespace __04_qviod__ {
 
 				int fd_max = -1;
 				if(fd_stdin > fd_max) fd_max = fd_stdin;
-				if(nVidCtrlFd > fd_max) fd_max = nVidCtrlFd;
+				if(nVidUserJobFd > fd_max) fd_max = nVidUserJobFd;
 				FD_SET(fd_stdin, &readfds);
-				FD_SET(nVidCtrlFd, &readfds);
+				FD_SET(nVidUserJobFd, &readfds);
 
 				err = select(fd_max + 1, &readfds, NULL, NULL, NULL);
 				if (err < 0) {
@@ -188,11 +188,11 @@ namespace __04_qviod__ {
 						break;
 				}
 
-				if (FD_ISSET(nVidCtrlFd, &readfds)) {
+				if (FD_ISSET(nVidUserJobFd, &readfds)) {
 					qvio_user_job user_job;
 					qvio_user_job_done user_job_done;
 
-					err = ioctl(nVidCtrlFd, QVID_IOC_USER_JOB_GET, &user_job);
+					err = ioctl(nVidUserJobFd, QVID_IOC_USER_JOB_GET, &user_job);
 					if(err) {
 						err = errno;
 						LOGE("%s(%d): ioctl(QVID_IOC_USER_JOB_GET) failed, err=%d", __FUNCTION__, __LINE__, err);
@@ -241,7 +241,7 @@ namespace __04_qviod__ {
 #endif
 
 #if 1
-					err = ioctl(nVidCtrlFd, QVID_IOC_USER_JOB_DONE, &user_job_done);
+					err = ioctl(nVidUserJobFd, QVID_IOC_USER_JOB_DONE, &user_job_done);
 					if(err) {
 						err = errno;
 						LOGE("%s(%d): ioctl(QVID_IOC_USER_JOB_DONE) failed, err=%d", __FUNCTION__, __LINE__, err);
@@ -304,6 +304,7 @@ namespace __04_qviod__ {
 }
 
 using namespace __04_qviod__;
+
 int main(int argc, char *argv[]) {
 	LOGD("entering...");
 

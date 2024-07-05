@@ -1,9 +1,11 @@
 #define pr_fmt(fmt)     "[" KBUILD_MODNAME "]%s(#%d): " fmt, __func__, __LINE__
 
 #include "video.h"
+#include "device.h"
 #include "ioctl.h"
 #include "user_job.h"
 
+#include <linux/kernel.h>
 #include <media/videobuf2-v4l2.h>
 
 struct qvio_video* qvio_video_new(void) {
@@ -13,8 +15,10 @@ struct qvio_video* qvio_video_new(void) {
 	qvio_queue_init(&self->queue);
 	mutex_init(&self->device_mutex);
 	self->vfl_dir = VFL_DIR_RX;
-	self->buffer_type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
 	self->device_caps = V4L2_CAP_VIDEO_CAPTURE | V4L2_CAP_STREAMING;
+	self->buffer_type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
+	self->halign = 0x40;
+	self->valign = 1;
 	qvio_user_job_init(&self->user_job_ctrl);
 
 	return self;
@@ -57,13 +61,16 @@ int qvio_video_start(struct qvio_video* self) {
 	int err;
 	struct vb2_queue* vb2_queue;
 
-	pr_info("\n");
+	pr_info("self=%p\n", self);
 
 	err = v4l2_device_register(NULL, &self->v4l2_dev);
 	if(err) {
 		pr_err("v4l2_device_register() failed, err=%d\n", err);
 		goto err0;
 	}
+
+	self->queue.halign = self->halign;
+	self->queue.valign = self->valign;
 
 	err = qvio_queue_start(&self->queue, self->buffer_type);
 	if(err) {
@@ -95,9 +102,9 @@ int qvio_video_start(struct qvio_video* self) {
 		self->current_format.fmt.pix.height = 1080;
 		self->current_format.fmt.pix.pixelformat = V4L2_PIX_FMT_NV12;
 		self->current_format.fmt.pix.bytesperline =
-			ZZ_ALIGN(self->current_format.fmt.pix.width, HALIGN);
+			ALIGN(self->current_format.fmt.pix.width, self->halign);
 		self->current_format.fmt.pix.sizeimage =
-			self->current_format.fmt.pix.bytesperline * self->current_format.fmt.pix.height * 3 / 2;
+			self->current_format.fmt.pix.bytesperline * ALIGN(self->current_format.fmt.pix.height, self->valign) * 3 / 2;
 
 #if 0 // DEBUG
 		pr_info("bytesperline=%d sizeimage=%d\n",
@@ -113,13 +120,13 @@ int qvio_video_start(struct qvio_video* self) {
 		self->current_format.fmt.pix_mp.pixelformat = V4L2_PIX_FMT_NV12;
 		self->current_format.fmt.pix_mp.num_planes = 2;
 		self->current_format.fmt.pix_mp.plane_fmt[0].bytesperline =
-			ZZ_ALIGN(self->current_format.fmt.pix_mp.width, HALIGN);
+			ALIGN(self->current_format.fmt.pix_mp.width, self->halign);
 		self->current_format.fmt.pix_mp.plane_fmt[0].sizeimage =
-			self->current_format.fmt.pix_mp.plane_fmt[0].bytesperline * self->current_format.fmt.pix_mp.height;
+			self->current_format.fmt.pix_mp.plane_fmt[0].bytesperline * ALIGN(self->current_format.fmt.pix_mp.height, self->valign);
 		self->current_format.fmt.pix_mp.plane_fmt[1].bytesperline =
-			ZZ_ALIGN(self->current_format.fmt.pix_mp.width, HALIGN);
+			ALIGN(self->current_format.fmt.pix_mp.width, self->halign);
 		self->current_format.fmt.pix_mp.plane_fmt[1].sizeimage =
-			self->current_format.fmt.pix_mp.plane_fmt[1].bytesperline * self->current_format.fmt.pix_mp.height / 2;
+			self->current_format.fmt.pix_mp.plane_fmt[1].bytesperline * ALIGN(self->current_format.fmt.pix_mp.height, self->valign) / 2;
 
 #if 0 // DEBUG
 		pr_info("bytesperline=%d/%d sizeimage=%d/%d\n",
@@ -191,16 +198,14 @@ int qvio_video_s_fmt(struct qvio_video* self, struct v4l2_format *format) {
 	case V4L2_BUF_TYPE_VIDEO_CAPTURE:
 	case V4L2_BUF_TYPE_VIDEO_OUTPUT:
 		switch(format->fmt.pix.pixelformat) {
-		case V4L2_PIX_FMT_NV12:
-			format->fmt.pix.bytesperline = ZZ_ALIGN(format->fmt.pix.width, HALIGN);
-			format->fmt.pix.sizeimage = format->fmt.pix.bytesperline * format->fmt.pix.height * 3 / 2;
+		case V4L2_PIX_FMT_YUYV:
+			format->fmt.pix.bytesperline = ALIGN(format->fmt.pix.width * 2, self->halign);
+			format->fmt.pix.sizeimage = format->fmt.pix.bytesperline * ALIGN(format->fmt.pix.height, self->valign);
+			break;
 
-#if 0 // DEBUG
-			pr_info("%dx%d bytesperline=%d sizeimage=%d\n",
-				format->fmt.pix.width, format->fmt.pix.height,
-				(int)format->fmt.pix.bytesperline,
-				(int)format->fmt.pix.sizeimage);
-#endif
+		case V4L2_PIX_FMT_NV12:
+			format->fmt.pix.bytesperline = ALIGN(format->fmt.pix.width, self->halign);
+			format->fmt.pix.sizeimage = format->fmt.pix.bytesperline * ALIGN(format->fmt.pix.height, self->valign) * 3 / 2;
 			break;
 
 		default:
@@ -209,19 +214,34 @@ int qvio_video_s_fmt(struct qvio_video* self, struct v4l2_format *format) {
 			goto err0;
 			break;
 		}
+
+#if 0 // DEBUG
+		pr_info("%dx%d bytesperline=%d sizeimage=%d\n",
+			format->fmt.pix.width, format->fmt.pix.height,
+			(int)format->fmt.pix.bytesperline,
+			(int)format->fmt.pix.sizeimage);
+#endif
+
 		break;
 
 	case V4L2_BUF_TYPE_VIDEO_CAPTURE_MPLANE:
 	case V4L2_BUF_TYPE_VIDEO_OUTPUT_MPLANE:
 		switch(format->fmt.pix_mp.pixelformat) {
+		case V4L2_PIX_FMT_YUYV:
+			format->fmt.pix_mp.num_planes = 1;
+			format->fmt.pix_mp.plane_fmt[0].bytesperline = ALIGN(format->fmt.pix_mp.width * 2, self->halign);
+			format->fmt.pix_mp.plane_fmt[0].sizeimage =
+				format->fmt.pix_mp.plane_fmt[0].bytesperline * ALIGN(format->fmt.pix_mp.height, self->valign);
+			break;
+
 		case V4L2_PIX_FMT_NV12:
 			format->fmt.pix_mp.num_planes = 2;
-			format->fmt.pix_mp.plane_fmt[0].bytesperline = ZZ_ALIGN(format->fmt.pix_mp.width, HALIGN);
+			format->fmt.pix_mp.plane_fmt[0].bytesperline = ALIGN(format->fmt.pix_mp.width, self->halign);
 			format->fmt.pix_mp.plane_fmt[0].sizeimage =
-				format->fmt.pix_mp.plane_fmt[0].bytesperline * format->fmt.pix_mp.height;
-			format->fmt.pix_mp.plane_fmt[1].bytesperline = ZZ_ALIGN(format->fmt.pix_mp.width, HALIGN);
+				format->fmt.pix_mp.plane_fmt[0].bytesperline * ALIGN(format->fmt.pix_mp.height, self->valign);
+			format->fmt.pix_mp.plane_fmt[1].bytesperline = format->fmt.pix_mp.plane_fmt[0].bytesperline;
 			format->fmt.pix_mp.plane_fmt[1].sizeimage =
-				format->fmt.pix_mp.plane_fmt[1].bytesperline * format->fmt.pix_mp.height / 2;
+				format->fmt.pix_mp.plane_fmt[1].bytesperline * ALIGN(format->fmt.pix_mp.height, self->valign) / 2;
 			break;
 
 		default:
@@ -230,6 +250,20 @@ int qvio_video_s_fmt(struct qvio_video* self, struct v4l2_format *format) {
 			goto err0;
 			break;
 		}
+
+#if 0 // DEBUG
+		pr_info("%dx%d bytesperline={%d,%d,%d,%d} sizeimage={%d,%d,%d,%d}\n",
+			format->fmt.pix_mp.width, format->fmt.pix_mp.height,
+			(int)format->fmt.pix_mp.plane_fmt[0].bytesperline,
+			(int)format->fmt.pix_mp.plane_fmt[1].bytesperline,
+			(int)format->fmt.pix_mp.plane_fmt[2].bytesperline,
+			(int)format->fmt.pix_mp.plane_fmt[3].bytesperline,
+			(int)format->fmt.pix_mp.plane_fmt[0].sizeimage,
+			(int)format->fmt.pix_mp.plane_fmt[1].sizeimage,
+			(int)format->fmt.pix_mp.plane_fmt[2].sizeimage,
+			(int)format->fmt.pix_mp.plane_fmt[3].sizeimage);
+#endif
+
 		break;
 
 	default:
@@ -273,6 +307,13 @@ int qvio_video_enum_fmt(struct qvio_video* self, struct v4l2_fmtdesc *format) {
 
 	switch(format->index) {
 	case 0:
+		format->flags = 0;
+		snprintf((char *) format->description, 32, "YUYV");
+		format->pixelformat = V4L2_PIX_FMT_YUYV;
+		format->mbus_code = 0;
+		break;
+
+	case 1:
 		format->flags = 0;
 		snprintf((char *) format->description, 32, "NV12");
 		format->pixelformat = V4L2_PIX_FMT_NV12;
@@ -322,6 +363,7 @@ int qvio_video_try_fmt(struct qvio_video* self, struct v4l2_format *format) {
 	case V4L2_BUF_TYPE_VIDEO_CAPTURE:
 	case V4L2_BUF_TYPE_VIDEO_OUTPUT:
 		switch(format->fmt.pix.pixelformat) {
+		case V4L2_PIX_FMT_YUYV:
 		case V4L2_PIX_FMT_NV12:
 			break;
 
@@ -337,6 +379,7 @@ int qvio_video_try_fmt(struct qvio_video* self, struct v4l2_format *format) {
 	case V4L2_BUF_TYPE_VIDEO_CAPTURE_MPLANE:
 	case V4L2_BUF_TYPE_VIDEO_OUTPUT_MPLANE:
 		switch(format->fmt.pix_mp.pixelformat) {
+		case V4L2_PIX_FMT_YUYV:
 		case V4L2_PIX_FMT_NV12:
 			break;
 
@@ -598,6 +641,7 @@ int qvio_video_enum_framesizes(struct qvio_video* self, struct v4l2_frmsizeenum 
 	switch(frame_sizes->index) {
 	case 0:
 		switch(frame_sizes->pixel_format) {
+		case V4L2_PIX_FMT_YUYV:
 		case V4L2_PIX_FMT_NV12:
 			frame_sizes->type = V4L2_FRMSIZE_TYPE_STEPWISE;
 			frame_sizes->stepwise.min_width = 64;

@@ -4,6 +4,7 @@
 #include <cstdint>
 #include <stack>
 #include <functional>
+#include <string>
 
 #define container_of(ptr, type, member) ({ \
 	void* __mptr = (void*)(ptr); \
@@ -31,6 +32,24 @@ namespace ZzUtils {
 		}
 
 		void Flush();
+	};
+
+	struct ZzStatBitRate {
+		std::string log_prefix;
+
+		int64_t stats_duration;
+		int64_t cur_ts;
+		int64_t last_ts;
+
+		int acc_ticks;
+		int64_t acc_bits;
+
+		int64_t max_bits;
+
+		ZzStatBitRate();
+
+		void Reset();
+		bool Log(int64_t bits, int64_t ts);
 	};
 
 	void TestLoop(std::function<int (int)> idle, int64_t dur_num = 1000000LL, int64_t dur_den = 60LL);

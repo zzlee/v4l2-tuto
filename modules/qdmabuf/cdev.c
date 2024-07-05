@@ -64,7 +64,7 @@ void qdmabuf_cdev_init(struct qdmabuf_device* self) {
 	memset(&self->cdev, 0, sizeof(struct cdev));
 }
 
-static int file_open(struct inode *inode, struct file *filp) {
+static int __file_open(struct inode *inode, struct file *filp) {
 	struct qdmabuf_device* device = container_of(inode->i_cdev, struct qdmabuf_device, cdev);
 
 	pr_info("device=%p\n", device);
@@ -75,7 +75,7 @@ static int file_open(struct inode *inode, struct file *filp) {
 	return 0;
 }
 
-static long file_ioctl(struct file * filp, unsigned int cmd, unsigned long arg) {
+static long __file_ioctl(struct file * filp, unsigned int cmd, unsigned long arg) {
 	long ret;
 	struct qdmabuf_device* device = filp->private_data;
 
@@ -101,8 +101,8 @@ static long file_ioctl(struct file * filp, unsigned int cmd, unsigned long arg) 
 }
 
 static struct file_operations qdmabuf_fops = {
-	.open = file_open,
-	.unlocked_ioctl = file_ioctl,
+	.open = __file_open,
+	.unlocked_ioctl = __file_ioctl,
 };
 
 int qdmabuf_cdev_start(struct qdmabuf_device* self) {

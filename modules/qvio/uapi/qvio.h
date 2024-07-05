@@ -90,12 +90,17 @@ struct qvio_user_job_done {
 
 #define QVID_IOC_MAGIC		'Q'
 
-// for user-job ioctls
-#define QVID_IOC_USER_JOB_GET	_IOR (QVID_IOC_MAGIC, 1, struct qvio_user_job)
-#define QVID_IOC_USER_JOB_DONE	_IOW (QVID_IOC_MAGIC, 2, struct qvio_user_job_done)
-
 // for qvio ioctls
 #define QVID_IOC_USER_JOB_FD	_IOR (QVID_IOC_MAGIC, BASE_VIDIOC_PRIVATE+0, int)
 #define QVID_IOC_BUF_DONE		_IO  (QVID_IOC_MAGIC, BASE_VIDIOC_PRIVATE+1)
+#define QVID_IOC_USER_CTRL_FD	_IOR (QVID_IOC_MAGIC, BASE_VIDIOC_PRIVATE+2, int)
+
+// USER_JOB_FD ioctls
+#define QVID_IOC_USER_JOB_GET	_IOR (QVID_IOC_MAGIC, 1, struct qvio_user_job)
+#define QVID_IOC_USER_JOB_DONE	_IOW (QVID_IOC_MAGIC, 2, struct qvio_user_job_done)
+
+// USER_CTRL_FD ioctls
+#define QVID_IOC_IOCOFFLINE		_IO  (QVID_IOC_MAGIC, 1)
+#define QVID_IOC_IOCONLINE		_IO  (QVID_IOC_MAGIC, 2)
 
 #endif /* _UAPI_LINUX_QVIO_H */

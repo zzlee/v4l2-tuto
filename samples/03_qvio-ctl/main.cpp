@@ -47,7 +47,7 @@ namespace __03_qvio_ctl__ {
 
 		ZzUtils::FreeStack oFreeStack;
 		int nVidFd;
-		int nVidCtrlFd;
+		int nVidUserJobFd;
 		int nMemory;
 		int nBufType;
 
@@ -121,7 +121,7 @@ namespace __03_qvio_ctl__ {
 
 		switch(1) { case 1:
 			nVidFd = -1;
-			nVidCtrlFd = -1;
+			nVidUserJobFd = -1;
 			nVidSrcFd = -1;
 
 			nMemory = V4L2_MEMORY_MMAP;
@@ -198,7 +198,7 @@ namespace __03_qvio_ctl__ {
 			LOGD("nVidFd=%d", nVidFd);
 			nBufType = V4L2_BUF_TYPE_VIDEO_CAPTURE;
 
-			err = ioctl(nVidFd, QVID_IOC_USER_JOB_FD, &nVidCtrlFd);
+			err = ioctl(nVidFd, QVID_IOC_USER_JOB_FD, &nVidUserJobFd);
 			if(err) {
 				err = errno;
 				LOGE("%s(%d): ioctl(QVID_IOC_USER_JOB_FD) failed, err=%d", __FUNCTION__, __LINE__, err);
@@ -207,15 +207,15 @@ namespace __03_qvio_ctl__ {
 			oFreeStack += [&]() {
 				int err;
 
-				err = close(nVidCtrlFd);
+				err = close(nVidUserJobFd);
 				if(err) {
 					err = errno;
 					LOGE("%s(%d): close() failed, err=%d", __FUNCTION__, __LINE__, err);
 				}
-				nVidCtrlFd = -1;
+				nVidUserJobFd = -1;
 			};
 
-			LOGD("nVidCtrlFd=%d", nVidCtrlFd);
+			LOGD("nVidUserJobFd=%d", nVidUserJobFd);
 		}
 	}
 
@@ -241,9 +241,9 @@ namespace __03_qvio_ctl__ {
 
 				int fd_max = -1;
 				if(fd_stdin > fd_max) fd_max = fd_stdin;
-				if(nVidCtrlFd > fd_max) fd_max = nVidCtrlFd;
+				if(nVidUserJobFd > fd_max) fd_max = nVidUserJobFd;
 				FD_SET(fd_stdin, &readfds);
-				FD_SET(nVidCtrlFd, &readfds);
+				FD_SET(nVidUserJobFd, &readfds);
 
 				err = select(fd_max + 1, &readfds, NULL, NULL, NULL);
 				if (err < 0) {
@@ -258,11 +258,11 @@ namespace __03_qvio_ctl__ {
 						break;
 				}
 
-				if (FD_ISSET(nVidCtrlFd, &readfds)) {
+				if (FD_ISSET(nVidUserJobFd, &readfds)) {
 					qvio_user_job user_job;
 					qvio_user_job_done user_job_done;
 
-					err = ioctl(nVidCtrlFd, QVID_IOC_USER_JOB_GET, &user_job);
+					err = ioctl(nVidUserJobFd, QVID_IOC_USER_JOB_GET, &user_job);
 					if(err) {
 						err = errno;
 						LOGE("%s(%d): ioctl(QVID_IOC_USER_JOB_GET) failed, err=%d", __FUNCTION__, __LINE__, err);
@@ -311,7 +311,7 @@ namespace __03_qvio_ctl__ {
 #endif
 
 #if 1
-					err = ioctl(nVidCtrlFd, QVID_IOC_USER_JOB_DONE, &user_job_done);
+					err = ioctl(nVidUserJobFd, QVID_IOC_USER_JOB_DONE, &user_job_done);
 					if(err) {
 						err = errno;
 						LOGE("%s(%d): ioctl(QVID_IOC_USER_JOB_DONE) failed, err=%d", __FUNCTION__, __LINE__, err);

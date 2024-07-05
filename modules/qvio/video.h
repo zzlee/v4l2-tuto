@@ -7,9 +7,6 @@
 #include <media/v4l2-device.h>
 #include <linux/videodev2.h>
 
-#define HALIGN 0x0010
-#define ZZ_ALIGN(x, a) (((x)+(a)-1)&~((a)-1))
-
 struct qvio_video {
 	struct kref ref;
 
@@ -19,14 +16,24 @@ struct qvio_video {
 	struct v4l2_device v4l2_dev;
 	struct video_device *vdev;
 	int vfl_dir;
+	char card_name[32];
+	char bus_info[32];
 	u32 device_caps;
 	enum v4l2_buf_type buffer_type;
+	int halign, valign;
 	struct v4l2_format current_format;
 	unsigned int current_inout;
 	struct v4l2_streamparm current_parm;
 
 	// user job
 	struct qvio_user_job_ctrl user_job_ctrl;
+
+	// user control
+	const struct file_operations* user_ctrl_fops;
+
+	// xdma
+	struct xdma_dev *xdev;
+	int bar_idx;
 };
 
 struct qvio_video* qvio_video_new(void);

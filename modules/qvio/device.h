@@ -15,6 +15,7 @@
 struct qvio_device {
 	struct kref ref;
 
+	struct device *dev;
 	struct platform_device *pdev;
 	struct pci_dev *pci_dev;
 

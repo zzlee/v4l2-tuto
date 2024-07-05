@@ -20,6 +20,7 @@ static int __platform_probe(struct platform_device *pdev) {
 		goto err0;
 	}
 
+	self->dev = &pdev->dev;
 	self->pdev = pdev;
 	platform_set_drvdata(pdev, self);
 
@@ -30,9 +31,12 @@ static int __platform_probe(struct platform_device *pdev) {
 		goto err1;
 	}
 
+	self->video[0]->user_job_ctrl.enable = true;
+
 	self->video[0]->vfl_dir = VFL_DIR_RX;
 	self->video[0]->buffer_type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
 	self->video[0]->device_caps = V4L2_CAP_VIDEO_CAPTURE | V4L2_CAP_STREAMING;
+	snprintf(self->video[0]->bus_info, sizeof(self->video[0]->bus_info), "platform");
 	snprintf(self->video[0]->v4l2_dev.name, V4L2_DEVICE_NAME_SIZE, "qvio-rx");
 
 	err = qvio_video_start(self->video[0]);

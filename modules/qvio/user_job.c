@@ -2,7 +2,6 @@
 
 #include "user_job.h"
 
-#include <linux/anon_inodes.h>
 #include <linux/compat.h>
 
 struct __user_job_entry {
@@ -27,9 +26,7 @@ int __user_job_entry_new(struct __user_job_entry** user_job_entry) {
 	}
 	INIT_LIST_HEAD(&(*user_job_entry)->node);
 
-	err = 0;
-
-	return err;
+	return 0;
 
 err0:
 	return err;
@@ -47,65 +44,10 @@ int __user_job_done_entry_new(struct __user_job_done_entry** user_job_done_entry
 	}
 	INIT_LIST_HEAD(&(*user_job_done_entry)->node);
 
-	err = 0;
-
-	return err;
+	return 0;
 
 err0:
 	return err;
-}
-
-void qvio_user_job_init(struct qvio_user_job_ctrl* self) {
-	pr_info("\n");
-
-	atomic_set(&self->sequence, 0);
-
-	init_waitqueue_head(&self->job_wq);
-	spin_lock_init(&self->job_list_lock);
-	INIT_LIST_HEAD(&self->job_list);
-
-	init_waitqueue_head(&self->done_wq);
-	spin_lock_init(&self->done_list_lock);
-	INIT_LIST_HEAD(&self->done_list);
-}
-
-void qvio_user_job_uninit(struct qvio_user_job_ctrl* self) {
-	struct __user_job_entry *user_job_entry;
-	struct __user_job_done_entry *user_job_done_entry;
-
-	pr_info("\n");
-
-	if(! list_empty(&self->job_list)) {
-		pr_warn("self->job_list is not empty\n");
-
-#if 1
-		list_for_each_entry(user_job_entry, &self->job_list, node) {
-			list_del(&user_job_entry->node);
-
-			pr_warn("user_job_entry->user_job={%d %d}\n",
-				(int)user_job_entry->user_job.id,
-				(int)user_job_entry->user_job.sequence);
-
-			kfree(user_job_entry);
-		}
-#endif
-	}
-
-	if(! list_empty(&self->done_list)) {
-		pr_warn("self->done_list is not empty\n");
-
-#if 1
-		list_for_each_entry(user_job_done_entry, &self->done_list, node) {
-			list_del(&user_job_done_entry->node);
-
-			pr_warn("user_job_done_entry->user_job_done={%d %d}\n",
-				(int)user_job_done_entry->user_job_done.id,
-				(int)user_job_done_entry->user_job_done.sequence);
-
-			kfree(user_job_done_entry);
-		}
-#endif
-	}
 }
 
 static int __file_release(struct inode *inode, struct file *filep) {
@@ -127,7 +69,7 @@ static __poll_t __file_poll(struct file *filep, struct poll_table_struct *wait) 
 	return 0;
 }
 
-long __ioctl_user_job_get(struct qvio_user_job_ctrl* self, unsigned long arg) {
+static long __ioctl_user_job_get(struct qvio_user_job_ctrl* self, unsigned long arg) {
 	long ret;
 	struct __user_job_entry *user_job_entry;
 	unsigned long flags;
@@ -169,7 +111,7 @@ err0:
 	return ret;
 }
 
-long __ioctl_user_job_done(struct qvio_user_job_ctrl* self, unsigned long arg) {
+static long __ioctl_user_job_done(struct qvio_user_job_ctrl* self, unsigned long arg) {
 	int err;
 	long ret;
 	struct __user_job_done_entry *user_job_done_entry;
@@ -246,7 +188,7 @@ static long __file_ioctl_compat(struct file *filep, unsigned int cmd,
 }
 #endif
 
-static const struct file_operations qvio_user_job_fileops = {
+static const struct file_operations __fileops = {
 	.release = __file_release,
 	.poll = __file_poll,
 	.owner = THIS_MODULE,
@@ -257,36 +199,60 @@ static const struct file_operations qvio_user_job_fileops = {
 #endif
 };
 
-int qvio_user_job_get_fd(struct qvio_user_job_ctrl* self) {
-	int err;
-	int fd;
-	struct file* file;
+void qvio_user_job_init(struct qvio_user_job_ctrl* self) {
+	pr_info("\n");
 
-	fd = get_unused_fd_flags(O_RDONLY | O_CLOEXEC);
-	if (fd < 0) {
-		pr_err("get_unused_fd_flags() failed, fd=%d\n", fd);
+	self->enable = true;
+	atomic_set(&self->sequence, 0);
 
-		err = fd;
-		goto err0;
+	init_waitqueue_head(&self->job_wq);
+	spin_lock_init(&self->job_list_lock);
+	INIT_LIST_HEAD(&self->job_list);
+
+	init_waitqueue_head(&self->done_wq);
+	spin_lock_init(&self->done_list_lock);
+	INIT_LIST_HEAD(&self->done_list);
+
+	self->ctrl_fops = &__fileops;
+}
+
+void qvio_user_job_uninit(struct qvio_user_job_ctrl* self) {
+	struct __user_job_entry *user_job_entry;
+	struct __user_job_done_entry *user_job_done_entry;
+
+	pr_info("\n");
+
+	if(! list_empty(&self->job_list)) {
+		pr_warn("self->job_list is not empty\n");
+
+#if 1
+		list_for_each_entry(user_job_entry, &self->job_list, node) {
+			list_del(&user_job_entry->node);
+
+			pr_warn("user_job_entry->user_job={%d %d}\n",
+				(int)user_job_entry->user_job.id,
+				(int)user_job_entry->user_job.sequence);
+
+			kfree(user_job_entry);
+		}
+#endif
 	}
 
-	file = anon_inode_getfile("qvio-user-job", &qvio_user_job_fileops, self, O_RDONLY | O_CLOEXEC);
-	if (IS_ERR(file)) {
-		err = PTR_ERR(file);
-		pr_err("anon_inode_getfile() failed, err=%d\n", err);
+	if(! list_empty(&self->done_list)) {
+		pr_warn("self->done_list is not empty\n");
 
-		goto err1;
+#if 1
+		list_for_each_entry(user_job_done_entry, &self->done_list, node) {
+			list_del(&user_job_done_entry->node);
+
+			pr_warn("user_job_done_entry->user_job_done={%d %d}\n",
+				(int)user_job_done_entry->user_job_done.id,
+				(int)user_job_done_entry->user_job_done.sequence);
+
+			kfree(user_job_done_entry);
+		}
+#endif
 	}
-
-	fd_install(fd, file);
-	err = fd;
-
-	return err;
-
-err1:
-	put_unused_fd(fd);
-err0:
-	return err;
 }
 
 static void __do_user_job(struct qvio_user_job_ctrl* self, struct __user_job_entry* user_job_entry) {
@@ -321,8 +287,6 @@ static int __wait_for_user_job_done(struct qvio_user_job_ctrl* self, void* user,
 		goto err0;
 	}
 
-	err = 0;
-
 #if 0 // DEBUG
 	pr_info("\n");
 #endif
@@ -349,7 +313,7 @@ static int __wait_for_user_job_done(struct qvio_user_job_ctrl* self, void* user,
 	}
 	kfree(user_job_done_entry);
 
-	return err;
+	return 0;
 
 err0:
 	return err;
@@ -359,7 +323,10 @@ int qvio_user_job_s_fmt(struct qvio_user_job_ctrl* self, struct v4l2_format *for
 	int err;
 	struct __user_job_entry *user_job_entry;
 
-	pr_info("\n");
+	pr_info("enable=%d\n", (int)self->enable);
+
+	if(! self->enable)
+		return 0;
 
 	err = __user_job_entry_new(&user_job_entry);
 	if(err) {
@@ -378,9 +345,7 @@ int qvio_user_job_s_fmt(struct qvio_user_job_ctrl* self, struct v4l2_format *for
 		goto err0;
 	}
 
-	err = 0;
-
-	return err;
+	return 0;
 
 err0:
 	return err;
@@ -390,7 +355,10 @@ int qvio_user_job_queue_setup(struct qvio_user_job_ctrl* self, unsigned int num_
 	int err;
 	struct __user_job_entry *user_job_entry;
 
-	pr_info("\n");
+	pr_info("enable=%d\n", (int)self->enable);
+
+	if(! self->enable)
+		return 0;
 
 	err = __user_job_entry_new(&user_job_entry);
 	if(err) {
@@ -409,9 +377,7 @@ int qvio_user_job_queue_setup(struct qvio_user_job_ctrl* self, unsigned int num_
 		goto err0;
 	}
 
-	err = 0;
-
-	return err;
+	return 0;
 
 err0:
 	return err;
@@ -421,7 +387,10 @@ int qvio_user_job_buf_init(struct qvio_user_job_ctrl* self, struct vb2_buffer *b
 	int err;
 	struct __user_job_entry *user_job_entry;
 
-	pr_info("\n");
+	pr_info("enable=%d\n", (int)self->enable);
+
+	if(! self->enable)
+		return 0;
 
 	err = __user_job_entry_new(&user_job_entry);
 	if(err) {
@@ -440,9 +409,7 @@ int qvio_user_job_buf_init(struct qvio_user_job_ctrl* self, struct vb2_buffer *b
 		goto err0;
 	}
 
-	err = 0;
-
-	return err;
+	return 0;
 
 err0:
 	return err;
@@ -452,7 +419,12 @@ int qvio_user_job_buf_cleanup(struct qvio_user_job_ctrl* self, struct vb2_buffer
 	int err;
 	struct __user_job_entry *user_job_entry;
 
-	pr_info("\n");
+#if 0 // DEBUG
+	pr_info("enable=%d\n", (int)self->enable);
+#endif
+
+	if(! self->enable)
+		return 0;
 
 	err = __user_job_entry_new(&user_job_entry);
 	if(err) {
@@ -471,9 +443,7 @@ int qvio_user_job_buf_cleanup(struct qvio_user_job_ctrl* self, struct vb2_buffer
 		goto err0;
 	}
 
-	err = 0;
-
-	return err;
+	return 0;
 
 err0:
 	return err;
@@ -483,7 +453,10 @@ int qvio_user_job_start_streaming(struct qvio_user_job_ctrl* self) {
 	int err;
 	struct __user_job_entry *user_job_entry;
 
-	pr_info("\n");
+	pr_info("enable=%d\n", (int)self->enable);
+
+	if(! self->enable)
+		return 0;
 
 	err = __user_job_entry_new(&user_job_entry);
 	if(err) {
@@ -502,9 +475,7 @@ int qvio_user_job_start_streaming(struct qvio_user_job_ctrl* self) {
 		goto err0;
 	}
 
-	err = 0;
-
-	return err;
+	return 0;
 
 err0:
 	return err;
@@ -514,7 +485,10 @@ int qvio_user_job_stop_streaming(struct qvio_user_job_ctrl* self) {
 	int err;
 	struct __user_job_entry *user_job_entry;
 
-	pr_info("\n");
+	pr_info("enable=%d\n", (int)self->enable);
+
+	if(! self->enable)
+		return 0;
 
 	err = __user_job_entry_new(&user_job_entry);
 	if(err) {
@@ -533,9 +507,7 @@ int qvio_user_job_stop_streaming(struct qvio_user_job_ctrl* self) {
 		goto err0;
 	}
 
-	err = 0;
-
-	return err;
+	return 0;
 
 err0:
 	return err;
@@ -546,8 +518,11 @@ int qvio_user_job_buf_done(struct qvio_user_job_ctrl* self, struct vb2_buffer *b
 	struct __user_job_entry *user_job_entry;
 
 #if 0 // DEBUG
-	pr_info("\n");
+	pr_info("enable=%d\n", (int)self->enable);
 #endif
+
+	if(! self->enable)
+		return 0;
 
 	err = __user_job_entry_new(&user_job_entry);
 	if(err) {
@@ -566,9 +541,7 @@ int qvio_user_job_buf_done(struct qvio_user_job_ctrl* self, struct vb2_buffer *b
 		goto err0;
 	}
 
-	err = 0;
-
-	return err;
+	return 0;
 
 err0:
 	return err;

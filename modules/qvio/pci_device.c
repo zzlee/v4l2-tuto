@@ -16,6 +16,163 @@ static const struct pci_device_id __pci_ids[] = {
 };
 MODULE_DEVICE_TABLE(pci, __pci_ids);
 
+static int __user_ctrl_release(struct inode *inode, struct file *filp) {
+	struct qvio_video* self = filp->private_data;
+
+	pr_info("self=%p\n", self);
+
+	return 0;
+}
+
+static ssize_t __user_ctrl_read(struct file *filp, char __user *buf, size_t count, loff_t *pos)
+{
+	struct qvio_video* self = filp->private_data;
+	struct xdma_dev *xdev;
+	void __iomem *reg;
+	u32 w;
+	int rv;
+
+	xdev = self->xdev;
+
+	/* only 32-bit aligned and 32-bit multiples */
+	if (*pos & 3)
+		return -EPROTO;
+	/* first address is BAR base plus file position offset */
+	reg = xdev->bar[self->bar_idx] + *pos;
+	//w = read_register(reg);
+	w = ioread32(reg);
+	dbg_sg("%s(@%p, count=%ld, pos=%d) value = 0x%08x\n",
+			__func__, reg, (long)count, (int)*pos, w);
+	rv = copy_to_user(buf, &w, 4);
+	if (rv)
+		dbg_sg("Copy to userspace failed but continuing\n");
+
+	*pos += 4;
+	return 4;
+}
+
+static ssize_t __user_ctrl_write(struct file *filp, const char __user *buf, size_t count, loff_t *pos)
+{
+	struct qvio_video* self = filp->private_data;
+	struct xdma_dev *xdev;
+	void __iomem *reg;
+	u32 w;
+	int rv;
+
+	xdev = self->xdev;
+
+	/* only 32-bit aligned and 32-bit multiples */
+	if (*pos & 3)
+		return -EPROTO;
+
+	/* first address is BAR base plus file position offset */
+	reg = xdev->bar[self->bar_idx] + *pos;
+	rv = copy_from_user(&w, buf, 4);
+	if (rv)
+		pr_info("copy from user failed %d/4, but continuing.\n", rv);
+
+	dbg_sg("%s(0x%08x @%p, count=%ld, pos=%d)\n",
+			__func__, w, reg, (long)count, (int)*pos);
+	//write_register(w, reg);
+	iowrite32(w, reg);
+	*pos += 4;
+	return 4;
+}
+
+/* maps the PCIe BAR into user space for memory-like access using mmap() */
+static int __user_ctrl_mmap(struct file *filp, struct vm_area_struct *vma)
+{
+	struct qvio_video* self = filp->private_data;
+	struct xdma_dev *xdev;
+	unsigned long off;
+	unsigned long phys;
+	unsigned long vsize;
+	unsigned long psize;
+	int rv;
+
+	xdev = self->xdev;
+
+	off = vma->vm_pgoff << PAGE_SHIFT;
+	/* BAR physical address */
+	phys = pci_resource_start(xdev->pdev, self->bar_idx) + off;
+	vsize = vma->vm_end - vma->vm_start;
+	/* complete resource */
+	psize = pci_resource_end(xdev->pdev, self->bar_idx) -
+		pci_resource_start(xdev->pdev, self->bar_idx) + 1 - off;
+
+	pr_info("self->bar_idx = %d\n", self->bar_idx);
+	pr_info("xdev = 0x%p\n", xdev);
+	pr_info("pci_dev = 0x%08lx\n", (unsigned long)xdev->pdev);
+	pr_info("off = 0x%lx, vsize 0x%lu, psize 0x%lu.\n", off, vsize, psize);
+	pr_info("start = 0x%llx\n",
+		(unsigned long long)pci_resource_start(xdev->pdev,
+		xdev->user_bar_idx));
+	pr_info("phys = 0x%lx\n", phys);
+
+	if (vsize > psize)
+		return -EINVAL;
+	/*
+	 * pages must not be cached as this would result in cache line sized
+	 * accesses to the end point
+	 */
+	vma->vm_page_prot = pgprot_noncached(vma->vm_page_prot);
+	/*
+	 * prevent touching the pages (byte access) for swap-in,
+	 * and prevent the pages from being swapped out
+	 */
+	vma->vm_flags |= VMEM_FLAGS;
+	/* make MMIO accessible to user space */
+	rv = io_remap_pfn_range(vma, vma->vm_start, phys >> PAGE_SHIFT,
+			vsize, vma->vm_page_prot);
+	dbg_sg("vma=0x%p, vma->vm_start=0x%lx, phys=0x%lx, size=%lu = %d\n",
+		vma, vma->vm_start, phys >> PAGE_SHIFT, vsize, rv);
+
+	if (rv)
+		return -EAGAIN;
+	return 0;
+}
+
+static long __user_ctrl_ioctl(struct file *filp, unsigned int cmd, unsigned long arg)
+{
+	struct qvio_video* self = filp->private_data;
+	struct xdma_dev *xdev;
+
+	xdev = self->xdev;
+	if (!xdev) {
+		pr_info("cmd %u, xdev NULL.\n", cmd);
+		return -EINVAL;
+	}
+	pr_info("cmd 0x%x, xdev 0x%p, pdev 0x%p.\n", cmd, xdev, xdev->pdev);
+
+	if (_IOC_TYPE(cmd) != QVID_IOC_MAGIC) {
+		pr_err("cmd %u, bad magic 0x%x/0x%x.\n",
+			 cmd, _IOC_TYPE(cmd), QVID_IOC_MAGIC);
+		return -ENOTTY;
+	}
+
+	switch (cmd) {
+	case QVID_IOC_IOCOFFLINE:
+		xdma_device_offline(xdev->pdev, xdev);
+		break;
+	case QVID_IOC_IOCONLINE:
+		xdma_device_online(xdev->pdev, xdev);
+		break;
+	default:
+		pr_err("UNKNOWN ioctl cmd 0x%x.\n", cmd);
+		return -ENOTTY;
+	}
+	return 0;
+}
+
+static const struct file_operations user_ctrl_fops = {
+	.owner = THIS_MODULE,
+	.release = __user_ctrl_release,
+	.read = __user_ctrl_read,
+	.write = __user_ctrl_write,
+	.mmap = __user_ctrl_mmap,
+	.unlocked_ioctl = __user_ctrl_ioctl,
+};
+
 static int __pci_probe(struct pci_dev *pdev, const struct pci_device_id *id) {
 	int err = 0;
 	struct qvio_device* self;
@@ -31,6 +188,7 @@ static int __pci_probe(struct pci_dev *pdev, const struct pci_device_id *id) {
 		goto err0;
 	}
 
+	self->dev = &pdev->dev;
 	self->pci_dev = pdev;
 	dev_set_drvdata(&pdev->dev, self);
 
@@ -98,8 +256,45 @@ static int __pci_probe(struct pci_dev *pdev, const struct pci_device_id *id) {
 
 	self->xdev = hndl;
 
+	self->video[0] = qvio_video_new();
+	if(! self) {
+		pr_err("qvio_video_new() failed\n");
+		err = -ENOMEM;
+		goto err2;
+	}
+
+	self->video[0]->user_job_ctrl.enable = false;
+
+	self->video[0]->vfl_dir = VFL_DIR_RX;
+	self->video[0]->buffer_type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
+	self->video[0]->device_caps = V4L2_CAP_VIDEO_CAPTURE | V4L2_CAP_STREAMING;
+	err = snprintf(self->video[0]->bus_info, sizeof(self->video[0]->bus_info), "PCI:%s", pci_name(pdev));
+	if(err >= sizeof(self->video[0]->bus_info)) {
+		pr_err("out of space, err=%d\n", err);
+		self->video[0]->bus_info[sizeof(self->video[0]->bus_info) - 1] = '\0';
+	}
+	snprintf(self->video[0]->v4l2_dev.name, V4L2_DEVICE_NAME_SIZE, "qvio-rx");
+	self->video[0]->queue.dev = self->dev;
+	self->video[0]->queue.xdev = self->xdev;
+	self->video[0]->queue.channel = 0;
+
+	self->video[0]->user_ctrl_fops = &user_ctrl_fops;
+
+	self->video[0]->xdev = self->xdev;
+	self->video[0]->bar_idx = self->xdev->user_bar_idx;
+
+	err = qvio_video_start(self->video[0]);
+	if(err) {
+		pr_err("qvio_qvio_start() failed, err=%d\n", err);
+		goto err3;
+	}
+
 	return 0;
 
+err3:
+	qvio_video_put(self->video[0]);
+err2:
+	xdma_device_close(self->pci_dev, self->xdev);
 err1:
 	qvio_device_put(self);
 err0:
@@ -114,6 +309,8 @@ static void __pci_remove(struct pci_dev *pdev) {
 	if (! self)
 		return;
 
+	qvio_video_stop(self->video[0]);
+	qvio_video_put(self->video[0]);
 	xdma_device_close(self->pci_dev, self->xdev);
 	qvio_device_put(self);
 	dev_set_drvdata(&pdev->dev, NULL);

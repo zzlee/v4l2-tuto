@@ -13,6 +13,7 @@
 typedef void (*qvio_user_job_done_handler)(void* user, struct qvio_user_job_done* user_job_done);
 
 struct qvio_user_job_ctrl {
+	bool enable;
 	atomic_t sequence;
 
 	// user-job list
@@ -24,11 +25,13 @@ struct qvio_user_job_ctrl {
 	wait_queue_head_t done_wq;
 	spinlock_t done_list_lock;
 	struct list_head done_list;
+
+	// user-job control
+	const struct file_operations* ctrl_fops;
 };
 
 void qvio_user_job_init(struct qvio_user_job_ctrl* self);
 void qvio_user_job_uninit(struct qvio_user_job_ctrl* self);
-int qvio_user_job_get_fd(struct qvio_user_job_ctrl* self);
 
 // user-job
 int qvio_user_job_s_fmt(struct qvio_user_job_ctrl* self, struct v4l2_format *format);
