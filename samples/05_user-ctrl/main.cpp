@@ -263,7 +263,6 @@ namespace __05_user_ctrl__ {
 		void UserCtrl5();
 		void UserCtrl6();
 		void UserCtrl7();
-		void UserCtrl8();
 	};
 
 	UserCtrl::UserCtrl() {
@@ -616,10 +615,6 @@ namespace __05_user_ctrl__ {
 				case '7':
 					UserCtrl7();
 					break;
-
-				case '8':
-					UserCtrl8();
-					break;
 				}
 
 				return err;
@@ -747,19 +742,6 @@ namespace __05_user_ctrl__ {
 
 		oUserCtrl.WriteRegister(0x000000D0, R000000D0);
 		LOGD("R000000D0=%d(0x%X)", R000000D0, R000000D0);
-	}
-
-	void App::UserCtrl8() {
-		int err;
-
-		switch(1) { case 1:
-			err = ioctl(oUserCtrl.nFd, QVID_IOC_SYNC_RUN);
-			if(err) {
-				err = errno;
-				LOGE("%s(%d): ioctl(QVID_IOC_SYNC_RUN) failed, err=%d", __FUNCTION__, __LINE__, err);
-				break;
-			}
-		}
 	}
 }
 

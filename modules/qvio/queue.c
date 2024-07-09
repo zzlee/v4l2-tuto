@@ -485,12 +485,6 @@ static int __stream_main(void * data) {
 			err = (int)size;
 			pr_warn("xdma_xfer_submit() failed, err=%d", err);
 
-			reg = xdev->bar[video->bar_idx] + 0x00D0;
-			w = ioread32(reg);
-			w &= ~0x00000001;
-			iowrite32(w, reg);
-			stream_started = false;
-
 			schedule();
 			continue;
 		}
@@ -638,42 +632,4 @@ int qvio_queue_try_buf_done(struct qvio_queue* self) {
 	__read_one_frame(self);
 
 	return 0;
-}
-
-void qvio_queue_sync_run(struct qvio_queue* self) {
-	struct qvio_video* video = container_of(self, struct qvio_video, queue);
-	struct xdma_dev *xdev = video->xdev;
-	void __iomem *reg;
-	u32 w;
-	int i;
-
-	pr_info("\n");
-
-	reg = xdev->bar[video->bar_idx] + 0x00D0;
-	w = ioread32(reg);
-	w |= 0x00004110;
-	w &= ~0x00000001;
-	iowrite32(w, reg);
-
-	pr_info("0x00D0=%X\n", w);
-
-	reg = xdev->bar[video->bar_idx] + 0x00D0;
-	w = ioread32(reg);
-	w |= 0x00000001;
-	iowrite32(w, reg);
-
-	pr_info("0x00D0=%X\n", w);
-
-	// forever loop
-	for(i = 0;i < 60 * 60;i++) {
-		// pr_info("i=%d\n", i);
-
-		__read_one_frame(self);
-	}
-
-	reg = xdev->bar[video->bar_idx] + 0x00D0;
-	w = ioread32(reg);
-	w |= 0x00004110;
-	w &= ~0x00000001;
-	iowrite32(w, reg);
 }

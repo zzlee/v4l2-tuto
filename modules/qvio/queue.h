@@ -31,6 +31,5 @@ int qvio_queue_s_fmt(struct qvio_queue* self, struct v4l2_format *format);
 int qvio_queue_g_fmt(struct qvio_queue* self, struct v4l2_format *format);
 
 int qvio_queue_try_buf_done(struct qvio_queue* self);
-void qvio_queue_sync_run(struct qvio_queue* self);
 
 #endif // __QVIO_QUEUE_H__
