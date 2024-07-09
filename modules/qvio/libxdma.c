@@ -313,6 +313,7 @@ static u32 read_interrupts(struct xdma_dev *xdev)
 	return build_u32(hi, lo);
 }
 
+#if 0 // NONEED
 void enable_perf(struct xdma_engine *engine)
 {
 	u32 w;
@@ -330,7 +331,9 @@ void enable_perf(struct xdma_engine *engine)
 
 	dbg_perf("IOCTL_XDMA_PERF_START\n");
 }
+#endif // NONEED
 
+#if 0 // NONEED
 void get_perf_stats(struct xdma_engine *engine)
 {
 	u32 hi;
@@ -363,6 +366,7 @@ void get_perf_stats(struct xdma_engine *engine)
 	lo = read_register(&engine->regs->perf_pnd_lo);
 	engine->xdma_perf->pending_count = build_u64(hi, lo);
 }
+#endif // NONEED
 
 static int engine_reg_dump(struct xdma_engine *engine)
 {
@@ -582,6 +586,7 @@ static int engine_start_mode_config(struct xdma_engine *engine)
 		return -EINVAL;
 	}
 
+#if 0 // NONEED
 	/* If a perf test is running, enable the engine interrupts */
 	if (engine->xdma_perf) {
 		w = XDMA_CTRL_IE_DESC_STOPPED;
@@ -597,6 +602,7 @@ static int engine_start_mode_config(struct xdma_engine *engine)
 			(unsigned long)(&engine->regs->interrupt_enable_mask) -
 				(unsigned long)(&engine->regs));
 	}
+#endif // NONEED
 
 	/* write control register of SG DMA engine */
 	w = (u32)XDMA_CTRL_RUN_STOP;
@@ -1026,6 +1032,7 @@ static int engine_service_perf(struct xdma_engine *engine, u32 desc_completed)
 		return -EINVAL;
 	}
 
+#if 0 // NONEED
 	/* performance measurement is running? */
 	if (engine->xdma_perf) {
 		/* a descriptor was completed? */
@@ -1046,6 +1053,7 @@ static int engine_service_perf(struct xdma_engine *engine, u32 desc_completed)
 			dbg_perf("transfer->xdma_perf stopped\n");
 		}
 	}
+#endif // NONEED
 	return 0;
 }
 
@@ -2284,6 +2292,7 @@ static int transfer_desc_init(struct xdma_transfer *transfer, int count)
 	return 0;
 }
 
+#if 0 // NONEED
 /* xdma_desc_link() - Link two descriptors
  *
  * Link the first descriptor to a second descriptor, or terminate the first.
@@ -2321,6 +2330,7 @@ static void xdma_desc_link(struct xdma_desc *first, struct xdma_desc *second,
 	/* write bytes and next_num */
 	first->control = cpu_to_le32(control);
 }
+#endif // NONEED
 
 /* xdma_desc_adjacent -- Set how many descriptors are adjacent to this one */
 static void xdma_desc_adjacent(struct xdma_desc *desc, u32 next_adjacent)
@@ -2626,6 +2636,7 @@ static int engine_destroy(struct xdma_dev *xdev, struct xdma_engine *engine)
 	return 0;
 }
 
+#if 0 // NONEED
 /**
  *engine_cyclic_stop() - stop a cyclic transfer running on an SG DMA engine
  *
@@ -2676,6 +2687,7 @@ struct xdma_transfer *engine_cyclic_stop(struct xdma_engine *engine)
 	}
 	return transfer;
 }
+#endif // NONEED
 
 static int engine_writeback_setup(struct xdma_engine *engine)
 {
@@ -3145,6 +3157,7 @@ static struct xdma_request_cb *xdma_init_request(struct sg_table *sgt,
 	return req;
 }
 
+#if 0 // NONEED
 ssize_t xdma_xfer_aperture(struct xdma_engine *engine, bool write, u64 ep_addr,
 			unsigned int aperture, struct sg_table *sgt,
 			bool dma_mapped, int timeout_ms)
@@ -3442,6 +3455,7 @@ unmap_sgl:
 	/* as long as some data is processed, return the count */
 	return done ? done : rv;
 }
+#endif // NONEED
 
 ssize_t xdma_xfer_submit(void *dev_hndl, int channel, bool write, u64 ep_addr,
 			 struct sg_table *sgt, bool dma_mapped, int timeout_ms)
@@ -3952,6 +3966,7 @@ rel_req:
 	return rv;
 }
 
+#if 0 // NONEED
 int xdma_performance_submit(struct xdma_dev *xdev, struct xdma_engine *engine)
 {
 	u32 max_consistent_size = XDMA_PERF_NUM_DESC * 32 * 1024; /* 4MB */
@@ -4082,6 +4097,7 @@ err_engine_transfer:
 	engine->perf_buf_virt = NULL;
 	return rv;
 }
+#endif // NONEED
 
 static struct xdma_dev *alloc_dev_instance(struct pci_dev *pdev)
 {
@@ -4128,11 +4144,17 @@ static struct xdma_dev *alloc_dev_instance(struct pci_dev *pdev)
 		INIT_LIST_HEAD(&engine->transfer_list);
 #if HAS_SWAKE_UP
 		init_swait_queue_head(&engine->shutdown_wq);
-		init_swait_queue_head(&engine->xdma_perf_wq);
 #else
 		init_waitqueue_head(&engine->shutdown_wq);
+#endif
+
+#if 0 // NONEED
+#if HAS_SWAKE_UP
+		init_swait_queue_head(&engine->xdma_perf_wq);
+#else
 		init_waitqueue_head(&engine->xdma_perf_wq);
 #endif
+#endif // NONEED
 	}
 
 	engine = xdev->engine_c2h;
@@ -4142,11 +4164,17 @@ static struct xdma_dev *alloc_dev_instance(struct pci_dev *pdev)
 		INIT_LIST_HEAD(&engine->transfer_list);
 #if HAS_SWAKE_UP
 		init_swait_queue_head(&engine->shutdown_wq);
-		init_swait_queue_head(&engine->xdma_perf_wq);
 #else
 		init_waitqueue_head(&engine->shutdown_wq);
+#endif
+
+#if 0 // NONEED
+#if HAS_SWAKE_UP
+		init_swait_queue_head(&engine->xdma_perf_wq);
+#else
 		init_waitqueue_head(&engine->xdma_perf_wq);
 #endif
+#endif // NONEED
 	}
 
 	return xdev;

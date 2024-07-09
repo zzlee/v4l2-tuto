@@ -178,9 +178,11 @@
 #define XDMA_DESC_COMPLETED	(1UL << 1)
 #define XDMA_DESC_EOP		(1UL << 4)
 
+#if 0 // NONEED
 #define XDMA_PERF_RUN	(1UL << 0)
 #define XDMA_PERF_CLEAR	(1UL << 1)
 #define XDMA_PERF_AUTO	(1UL << 2)
+#endif // NONEED
 
 #define MAGIC_ENGINE	0xEEEEEEEEUL
 #define MAGIC_DEVICE	0xDDDDDDDDUL
@@ -277,14 +279,18 @@ enum dev_capabilities {
 /* SECTION: Structure definitions */
 
 struct xdma_io_cb {
-	// void __user *buf;
-	// size_t len;
+#if 0 // NONEED
+	void __user *buf;
+	size_t len;
+#endif // NONEED
 	void *private;
+#if 0 // NONEED
 	unsigned int pages_nr;
 	struct sg_table sgt;
 	struct page **pages;
 	/** total data size */
 	unsigned int count;
+#endif // NONEED
 	/** MM only, DDR/BRAM memory addr */
 	u64 ep_addr;
 	/** write: if write to the device */
@@ -330,6 +336,7 @@ struct engine_regs {
 	u32 interrupt_enable_mask_w1c;
 	u32 reserved_3[9];	/* padding */
 
+#if 0 // NONEED
 	u32 perf_ctrl;
 	u32 perf_cyc_lo;
 	u32 perf_cyc_hi;
@@ -337,6 +344,7 @@ struct engine_regs {
 	u32 perf_dat_hi;
 	u32 perf_pnd_lo;
 	u32 perf_pnd_hi;
+#endif // NONEED
 } __packed;
 
 struct engine_sgdma_regs {
@@ -486,6 +494,7 @@ struct xdma_request_cb {
 	struct sw_desc sdesc[0];
 };
 
+#if 0 // NONEED
 struct xdma_performance_ioctl {
 	/* IOCTL_XDMA_IOCTL_Vx */
 	uint32_t version;
@@ -497,6 +506,7 @@ struct xdma_performance_ioctl {
 	uint64_t data_cycle_count;
 	uint64_t pending_count;
 };
+#endif // NONEED
 
 struct xdma_engine {
 	unsigned long magic;	/* structure ID for sanity checks */
@@ -536,8 +546,10 @@ struct xdma_engine {
 	/* Members applicable to AXI-ST C2H (cyclic) transfers */
 	struct xdma_result *cyclic_result;
 	dma_addr_t cyclic_result_bus;	/* bus addr for transfer */
+#if 0 // NONEED
 	u8 *perf_buf_virt;
 	dma_addr_t perf_buf_bus; /* bus address */
+#endif // NONEED
 
 	/* Members associated with polled mode support */
 	u8 *poll_mode_addr_virt;	/* virt addr for descriptor writeback */
@@ -561,6 +573,7 @@ struct xdma_engine {
 	int desc_idx;			/* current descriptor index */
 	int desc_used;			/* total descriptors used */
 
+#if 0 // NONEED
 	/* for performance test support */
 	struct xdma_performance_ioctl *xdma_perf;	/* perf test control */
 #if	HAS_SWAKE_UP
@@ -568,6 +581,7 @@ struct xdma_engine {
 #else
 	wait_queue_head_t xdma_perf_wq;	/* Perf test sync */
 #endif
+#endif // NONEED
 
 	struct xdma_kthread *cmplthp;
 	/* completion status thread list for the queue */
@@ -693,15 +707,19 @@ struct xdma_dev *xdev_find_by_pdev(struct pci_dev *pdev);
 void xdma_device_offline(struct pci_dev *pdev, void *dev_handle);
 void xdma_device_online(struct pci_dev *pdev, void *dev_handle);
 
+#if 0 // NONEED
 int xdma_performance_submit(struct xdma_dev *xdev, struct xdma_engine *engine);
 struct xdma_transfer *engine_cyclic_stop(struct xdma_engine *engine);
 void enable_perf(struct xdma_engine *engine);
 void get_perf_stats(struct xdma_engine *engine);
+#endif // NONEED
 
 int engine_addrmode_set(struct xdma_engine *engine, unsigned long arg);
 int engine_service_poll(struct xdma_engine *engine, u32 expected_desc_count);
 
+#if 0 // NONEED
 ssize_t xdma_xfer_aperture(struct xdma_engine *engine, bool write, u64 ep_addr,
 			unsigned int aperture, struct sg_table *sgt,
 			bool dma_mapped, int timeout_ms);
+#endif // NONEED
 #endif /* XDMA_LIB_H */

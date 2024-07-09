@@ -11,7 +11,7 @@
 
 struct qvio_queue_buffer {
 	struct vb2_v4l2_buffer vb;
-	struct list_head list;
+	struct list_head list_ready;
 
 	// user-job buf-init
 	struct {
@@ -25,18 +25,12 @@ struct qvio_queue_buffer {
 	// vb2_buffer dma access
 	struct sg_table sgt;
 	enum dma_data_direction dma_dir;
-
-	// xdma
-	struct xdma_io_cb io_cb;
-	struct work_struct io_done_work;
 };
 
 void qvio_queue_init(struct qvio_queue* self) {
 	mutex_init(&self->queue_mutex);
 	INIT_LIST_HEAD(&self->buffers);
 	mutex_init(&self->buffers_mutex);
-	INIT_LIST_HEAD(&self->pending_buffers);
-	mutex_init(&self->pending_buffers_mutex);
 	self->xdev = NULL;
 	self->channel = -1;
 }
@@ -258,54 +252,6 @@ err0:
 	return err;
 }
 
-static void __io_done(unsigned long cb_hndl, int err) {
-	struct xdma_io_cb *cb = (struct xdma_io_cb *)cb_hndl;
-	struct vb2_buffer *buffer = cb->private;
-	struct qvio_queue* self = vb2_get_drv_priv(buffer->vb2_queue);
-	struct qvio_video* video = container_of(self, struct qvio_video, queue);
-	struct vb2_v4l2_buffer *vbuf = to_vb2_v4l2_buffer(buffer);
-	struct qvio_queue_buffer* buf = container_of(vbuf, struct qvio_queue_buffer, vb);
-	struct xdma_dev *xdev = self->xdev;
-	ssize_t size;
-
-	if(err) {
-		pr_err("err=%d\n", err);
-		goto err0;
-	}
-
-	size = xdma_xfer_completion((void *)cb, xdev, self->channel, cb->write,
-		cb->ep_addr, &buf->sgt, true, 0);
-
-#if 1 // DEBUG
-	pr_info("xdma_xfer_completion(), size=%d\n", (int)size);
-#endif
-
-#if 0 // DEBUG
-	sgt_dump(&buf->sgt);
-#endif
-
-	buf->vb.vb2_buf.timestamp = ktime_get_ns();
-	buf->vb.field = V4L2_FIELD_NONE;
-	buf->vb.sequence = self->sequence++;
-
-	vb2_buffer_done(&buf->vb.vb2_buf, VB2_BUF_STATE_DONE);
-	schedule_work(&buf->io_done_work);
-
-	return;
-err0:
-}
-
-static void __read_one_frame_nowait(struct qvio_queue* self);
-
-static void __io_done_work(struct work_struct* ws) {
-	struct qvio_queue_buffer* buf = container_of(ws, struct qvio_queue_buffer, io_done_work);
-	struct vb2_v4l2_buffer *vbuf = &buf->vb;
-	struct vb2_buffer *buffer = &vbuf->vb2_buf;
-	struct qvio_queue* self = vb2_get_drv_priv(buffer->vb2_queue);
-
-	__read_one_frame_nowait(self);
-}
-
 static int __buf_prepare(struct vb2_buffer *buffer) {
 	int err;
 	struct qvio_queue* self = vb2_get_drv_priv(buffer->vb2_queue);
@@ -351,17 +297,8 @@ static int __buf_prepare(struct vb2_buffer *buffer) {
 			break;
 		}
 		vb2_set_plane_payload(buffer, 0, plane_size);
-		vaddr = vb2_plane_vaddr(buffer, 0);
-
-		// buf->io_cb.buf = vaddr;
-		// buf->io_cb.len = plane_size;
-		buf->io_cb.ep_addr = 0;
-		buf->io_cb.write = false;
-		buf->io_cb.private = buffer;
-		buf->io_cb.io_done = __io_done;
-		INIT_WORK(&buf->io_done_work, __io_done_work);
-
 		dma_sync_sg_for_device(self->dev, buf->sgt.sgl, buf->sgt.orig_nents, DMA_BIDIRECTIONAL);
+
 		break;
 
 	case V4L2_BUF_TYPE_VIDEO_CAPTURE_MPLANE:
@@ -444,62 +381,16 @@ static void __buf_queue(struct vb2_buffer *buffer) {
 	struct qvio_queue* self = vb2_get_drv_priv(buffer->vb2_queue);
 	struct vb2_v4l2_buffer *vbuf = to_vb2_v4l2_buffer(buffer);
 	struct qvio_queue_buffer* buf = container_of(vbuf, struct qvio_queue_buffer, vb);
+	ssize_t size;
 
 #if 0 // DEBUG
 	pr_info("param: %p %p %d %p\n", self, vbuf, vbuf->vb2_buf.index, buf);
 #endif
 
 	if (!mutex_lock_interruptible(&self->buffers_mutex)) {
-		list_add_tail(&buf->list, &self->buffers);
+		list_add_tail(&buf->list_ready, &self->buffers);
 		mutex_unlock(&self->buffers_mutex);
 	}
-}
-
-static void __read_one_frame_nowait(struct qvio_queue* self) {
-	struct qvio_video* video = container_of(self, struct qvio_video, queue);
-	struct qvio_queue_buffer* buf;
-	struct xdma_dev *xdev = video->xdev;
-	int err;
-	ssize_t size;
-	void __iomem *reg;
-	u32 w;
-
-	err = mutex_lock_interruptible(&self->buffers_mutex);
-	if (err) {
-		pr_err("mutex_lock_interruptible() failed, err=%d\n", err);
-
-		goto err0;
-	}
-
-	if (list_empty(&self->buffers)) {
-		mutex_unlock(&self->buffers_mutex);
-		pr_err("unexpected, list_empty()\n");
-
-		goto err0;
-	}
-
-	buf = list_entry(self->buffers.next, struct qvio_queue_buffer, list);
-	list_del(&buf->list);
-	mutex_unlock(&self->buffers_mutex);
-
-#if 0 // DEBUG
-	pr_info("xdev=%p channel=%d\n", self->xdev, self->channel);
-#endif
-
-#if 0 // DEBUG
-	sgt_dump(&buf->sgt);
-#endif
-
-	size = xdma_xfer_submit_nowait(&buf->io_cb, self->xdev, self->channel, false, 0,
-		&buf->sgt, true, 0);
-
-#if 0 // DEBUG
-	pr_info("xdma_xfer_submit_nowait(), size=%d\n", (int)size);
-#endif
-
-	return;
-
-err0:
 }
 
 static void __read_one_frame(struct qvio_queue* self) {
@@ -523,8 +414,8 @@ static void __read_one_frame(struct qvio_queue* self) {
 		goto err0;
 	}
 
-	buf = list_entry(self->buffers.next, struct qvio_queue_buffer, list);
-	list_del(&buf->list);
+	buf = list_entry(self->buffers.next, struct qvio_queue_buffer, list_ready);
+	list_del(&buf->list_ready);
 	mutex_unlock(&self->buffers_mutex);
 
 #if 0 // DEBUG
@@ -545,6 +436,78 @@ static void __read_one_frame(struct qvio_queue* self) {
 err0:
 }
 
+static int __stream_main(void * data) {
+	int err;
+	struct qvio_queue* self = data;
+	struct qvio_video* video = container_of(self, struct qvio_video, queue);
+	struct qvio_queue_buffer* buf = NULL;
+	struct xdma_dev *xdev = video->xdev;
+	void __iomem *reg;
+	u32 w;
+	ssize_t size;
+	bool stream_started = false;
+
+	pr_info("+\n");
+
+	while (!kthread_should_stop()) {
+		if(buf == NULL) {
+			err = mutex_lock_interruptible(&self->buffers_mutex);
+			if (err) {
+				pr_err("mutex_lock_interruptible() failed, err=%d\n", err);
+
+				break;
+			}
+
+			if (list_empty(&self->buffers)) {
+				mutex_unlock(&self->buffers_mutex);
+				pr_warn("unexpected, list_empty()\n");
+
+				schedule();
+				continue;
+			}
+
+			buf = list_entry(self->buffers.next, struct qvio_queue_buffer, list_ready);
+			list_del(&buf->list_ready);
+			mutex_unlock(&self->buffers_mutex);
+		}
+
+		if(! stream_started) {
+			reg = xdev->bar[video->bar_idx] + 0x00D0;
+			w = ioread32(reg);
+			w |= 0x00000001;
+			iowrite32(w, reg);
+
+			stream_started = true;
+		}
+
+		size = xdma_xfer_submit(self->xdev, self->channel, false, 0, &buf->sgt, true, 100);
+		if((int)size < 0) {
+			err = (int)size;
+			pr_warn("xdma_xfer_submit() failed, err=%d", err);
+
+			reg = xdev->bar[video->bar_idx] + 0x00D0;
+			w = ioread32(reg);
+			w &= ~0x00000001;
+			iowrite32(w, reg);
+			stream_started = false;
+
+			schedule();
+			continue;
+		}
+
+		vb2_buffer_done(&buf->vb.vb2_buf, VB2_BUF_STATE_DONE);
+		buf = NULL;
+
+		schedule();
+		continue;
+	}
+
+	pr_info("-\n");
+
+	return 0;
+}
+
+
 static int __start_streaming(struct vb2_queue *queue, unsigned int count) {
 	int err;
 	struct qvio_queue* self = container_of(queue, struct qvio_queue, queue);
@@ -557,23 +520,24 @@ static int __start_streaming(struct vb2_queue *queue, unsigned int count) {
 
 	self->sequence = 0;
 
-#if 0
 	reg = xdev->bar[video->bar_idx] + 0x00D0;
 	w = ioread32(reg);
 	w |= 0x00004110;
 	w &= ~0x00000001;
 	iowrite32(w, reg);
 
-	__read_one_frame_nowait(self);
-	__read_one_frame_nowait(self);
+	self->task = kthread_create(__stream_main, self, self->queue.name);
+	if(! self->task) {
+		pr_err("kthread_create() failed\n");
+		goto err0;
+	}
 
-	reg = xdev->bar[video->bar_idx] + 0x00D0;
-	w = ioread32(reg);
-	w |= 0x00000001;
-	iowrite32(w, reg);
-#endif
+	wake_up_process(self->task);
 
 	return 0;
+
+err0:
+	return -EIO;
 }
 
 static void __stop_streaming(struct vb2_queue *queue) {
@@ -585,6 +549,11 @@ static void __stop_streaming(struct vb2_queue *queue) {
 
 	pr_info("\n");
 
+	if(self->task) {
+		kthread_stop(self->task);
+		self->task = NULL;
+	}
+
 	reg = xdev->bar[video->bar_idx] + 0x00D0;
 	w = ioread32(reg);
 	w &= ~0x00000001;
@@ -594,13 +563,13 @@ static void __stop_streaming(struct vb2_queue *queue) {
 		struct qvio_queue_buffer* buf;
 		struct qvio_queue_buffer* node;
 
-		list_for_each_entry_safe(buf, node, &self->buffers, list) {
-#if 0 // DEBUG
+		list_for_each_entry_safe(buf, node, &self->buffers, list_ready) {
+#if 1 // DEBUG
 			pr_info("vb2_buffer_done: %p %d\n", buf, buf->vb.vb2_buf.index);
 #endif
 
 			vb2_buffer_done(&buf->vb.vb2_buf, VB2_BUF_STATE_ERROR);
-			list_del(&buf->list);
+			list_del(&buf->list_ready);
 		}
 
 		mutex_unlock(&self->buffers_mutex);
@@ -666,7 +635,7 @@ int qvio_queue_g_fmt(struct qvio_queue* self, struct v4l2_format *format) {
 }
 
 int qvio_queue_try_buf_done(struct qvio_queue* self) {
-	__read_one_frame_nowait(self);
+	__read_one_frame(self);
 
 	return 0;
 }
