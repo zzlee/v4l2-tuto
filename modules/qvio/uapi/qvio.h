@@ -102,5 +102,6 @@ struct qvio_user_job_done {
 // USER_CTRL_FD ioctls
 #define QVID_IOC_IOCOFFLINE		_IO  (QVID_IOC_MAGIC, 1)
 #define QVID_IOC_IOCONLINE		_IO  (QVID_IOC_MAGIC, 2)
+#define QVID_IOC_SYNC_RUN		_IO  (QVID_IOC_MAGIC, 3)
 
 #endif /* _UAPI_LINUX_QVIO_H */

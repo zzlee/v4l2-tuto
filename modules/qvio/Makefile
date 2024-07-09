@@ -21,6 +21,8 @@ ccflags-y += \
 -O3 \
 -DQVIO_MODULE_VERSION=\"$(MODULE_VERSION)\"
 
+# ccflags-y += -D__LIBXDMA_DEBUG__
+
 all:
 	$(MAKE) -C $(KERNEL_DIR) M=$(PWD) modules
 

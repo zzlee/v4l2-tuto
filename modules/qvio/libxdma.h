@@ -277,8 +277,8 @@ enum dev_capabilities {
 /* SECTION: Structure definitions */
 
 struct xdma_io_cb {
-	void __user *buf;
-	size_t len;
+	// void __user *buf;
+	// size_t len;
 	void *private;
 	unsigned int pages_nr;
 	struct sg_table sgt;

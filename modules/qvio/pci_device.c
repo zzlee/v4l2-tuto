@@ -154,9 +154,15 @@ static long __user_ctrl_ioctl(struct file *filp, unsigned int cmd, unsigned long
 	case QVID_IOC_IOCOFFLINE:
 		xdma_device_offline(xdev->pdev, xdev);
 		break;
+
 	case QVID_IOC_IOCONLINE:
 		xdma_device_online(xdev->pdev, xdev);
 		break;
+
+	case QVID_IOC_SYNC_RUN:
+		qvio_queue_sync_run(&self->queue);
+		break;
+
 	default:
 		pr_err("UNKNOWN ioctl cmd 0x%x.\n", cmd);
 		return -ENOTTY;

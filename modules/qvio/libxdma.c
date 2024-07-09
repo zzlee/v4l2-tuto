@@ -2501,7 +2501,7 @@ static int transfer_queue(struct xdma_engine *engine,
 	/* engine is idle? */
 	if (!engine->running) {
 		/* start engine */
-		pr_info("%s(): starting %s engine.\n", __func__, engine->name);
+		dbg_tfr("%s(): starting %s engine.\n", __func__, engine->name);
 		transfer_started = engine_start(engine);
 		if (!transfer_started) {
 			pr_err("Failed to start dma engine\n");
@@ -3806,10 +3806,8 @@ ssize_t xdma_xfer_submit_nowait(void *cb_hndl, void *dev_hndl, int channel,
 	if (!dev_hndl)
 		return -EINVAL;
 
-#if 0
 	if (debug_check_dev_hndl(__func__, xdev->pdev, dev_hndl) < 0)
 		return -EINVAL;
-#endif
 
 	if (write == 1) {
 		if (channel >= xdev->h2c_channel_max) {
