@@ -144,6 +144,10 @@ int qvio_video_start(struct qvio_video* self) {
 	}
 
 	self->current_parm.type = self->buffer_type;
+	self->current_parm.parm.capture.capability = V4L2_CAP_TIMEPERFRAME;
+	self->current_parm.parm.capture.capturemode = 0;
+	self->current_parm.parm.capture.timeperframe.numerator = 60;
+	self->current_parm.parm.capture.timeperframe.denominator = 1;
 
 	snprintf(self->vdev->name, 32, "%s", self->v4l2_dev.name);
 	self->vdev->v4l2_dev = &self->v4l2_dev;
@@ -300,7 +304,7 @@ int qvio_video_enum_fmt(struct qvio_video* self, struct v4l2_fmtdesc *format) {
 
 	if(format->type != self->buffer_type) {
 		pr_err("unexpected value, %d != %d\n", (int)format->type, (int)self->buffer_type);
-		err = EINVAL;
+		err = -EINVAL;
 
 		goto err0;
 	}
@@ -322,7 +326,7 @@ int qvio_video_enum_fmt(struct qvio_video* self, struct v4l2_fmtdesc *format) {
 
 	default:
 		pr_err("unexpected value, format->index=%d\n", (int)format->index);
-		err = EINVAL;
+		err = -EINVAL;
 
 		goto err0;
 		break;
@@ -354,7 +358,7 @@ int qvio_video_try_fmt(struct qvio_video* self, struct v4l2_format *format) {
 
 	if(format->type != self->buffer_type) {
 		pr_err("unexpected value, %d != %d\n", (int)format->type, (int)self->buffer_type);
-		err = EINVAL;
+		err = -EINVAL;
 
 		goto err0;
 	}
@@ -369,7 +373,7 @@ int qvio_video_try_fmt(struct qvio_video* self, struct v4l2_format *format) {
 
 		default:
 			pr_err("unexpected value, format->fmt.pix.pixelformat=0x%X\n", (int)format->fmt.pix.pixelformat);
-			err = EINVAL;
+			err = -EINVAL;
 
 			goto err0;
 			break;
@@ -385,7 +389,7 @@ int qvio_video_try_fmt(struct qvio_video* self, struct v4l2_format *format) {
 
 		default:
 			pr_err("unexpected value, format->fmt.pix_mp.pixelformat=0x%X\n", (int)format->fmt.pix_mp.pixelformat);
-			err = EINVAL;
+			err = -EINVAL;
 
 			goto err0;
 			break;
@@ -394,7 +398,7 @@ int qvio_video_try_fmt(struct qvio_video* self, struct v4l2_format *format) {
 
 	default:
 		pr_err("unexpected value, self->buffer_type=%d\n", (int)self->buffer_type);
-		err = EINVAL;
+		err = -EINVAL;
 
 		goto err0;
 		break;
@@ -415,7 +419,7 @@ int qvio_video_enum_input(struct qvio_video* self, struct v4l2_input *input) {
 
 	if(self->vfl_dir != VFL_DIR_RX) {
 		pr_err("unexpected value, self->vfl_dir=%d\n", (int)self->vfl_dir);
-		err = EINVAL;
+		err = -EINVAL;
 
 		goto err0;
 	}
@@ -433,7 +437,7 @@ int qvio_video_enum_input(struct qvio_video* self, struct v4l2_input *input) {
 
 	default:
 		pr_err("unexpected value, input->index=%d\n", (int)input->index);
-		err = EINVAL;
+		err = -EINVAL;
 
 		goto err0;
 		break;
@@ -454,7 +458,7 @@ int qvio_video_g_input(struct qvio_video* self, unsigned int *input) {
 
 	if(self->vfl_dir != VFL_DIR_RX) {
 		pr_err("unexpected value, self->vfl_dir=%d\n", (int)self->vfl_dir);
-		err = EINVAL;
+		err = -EINVAL;
 
 		goto err0;
 	}
@@ -475,7 +479,7 @@ int qvio_video_s_input(struct qvio_video* self, unsigned int input) {
 
 	if(self->vfl_dir != VFL_DIR_RX) {
 		pr_err("unexpected value, self->vfl_dir=%d\n", (int)self->vfl_dir);
-		err = EINVAL;
+		err = -EINVAL;
 
 		goto err0;
 	}
@@ -487,7 +491,7 @@ int qvio_video_s_input(struct qvio_video* self, unsigned int input) {
 
 	default:
 		pr_err("unexpected value, input=%d\n", (int)input);
-		err = EINVAL;
+		err = -EINVAL;
 
 		goto err0;
 		break;
@@ -508,7 +512,7 @@ int qvio_video_enum_output(struct qvio_video* self, struct v4l2_output *output) 
 
 	if(self->vfl_dir != VFL_DIR_TX) {
 		pr_err("unexpected value, self->vfl_dir=%d\n", (int)self->vfl_dir);
-		err = EINVAL;
+		err = -EINVAL;
 
 		goto err0;
 	}
@@ -525,7 +529,7 @@ int qvio_video_enum_output(struct qvio_video* self, struct v4l2_output *output) 
 
 	default:
 		pr_err("unexpected value, output->index=%d\n", (int)output->index);
-		err = EINVAL;
+		err = -EINVAL;
 
 		goto err0;
 		break;
@@ -544,7 +548,7 @@ int qvio_video_g_output(struct qvio_video* self, unsigned int *output) {
 
 	if(self->vfl_dir != VFL_DIR_TX) {
 		pr_err("unexpected value, self->vfl_dir=%d\n", (int)self->vfl_dir);
-		err = EINVAL;
+		err = -EINVAL;
 
 		goto err0;
 	}
@@ -565,7 +569,7 @@ int qvio_video_s_output(struct qvio_video* self, unsigned int output) {
 
 	if(self->vfl_dir != VFL_DIR_TX) {
 		pr_err("unexpected value, self->vfl_dir=%d\n", (int)self->vfl_dir);
-		err = EINVAL;
+		err = -EINVAL;
 
 		goto err0;
 	}
@@ -577,7 +581,7 @@ int qvio_video_s_output(struct qvio_video* self, unsigned int output) {
 
 	default:
 		pr_err("unexpected value, output=%d\n", (int)output);
-		err = EINVAL;
+		err = -EINVAL;
 
 		goto err0;
 		break;
@@ -598,7 +602,7 @@ int qvio_video_g_parm(struct qvio_video* self, struct v4l2_streamparm *param) {
 
 	if(param->type != self->buffer_type) {
 		pr_err("unexpected value, %d != %d\n", (int)param->type, (int)self->buffer_type);
-		err = EINVAL;
+		err = -EINVAL;
 
 		goto err0;
 	}
@@ -619,7 +623,7 @@ int qvio_video_s_parm(struct qvio_video* self, struct v4l2_streamparm *param) {
 
 	if(param->type != self->buffer_type) {
 		pr_err("unexpected value, %d != %d\n", (int)param->type, (int)self->buffer_type);
-		err = EINVAL;
+		err = -EINVAL;
 
 		goto err0;
 	}
@@ -646,15 +650,15 @@ int qvio_video_enum_framesizes(struct qvio_video* self, struct v4l2_frmsizeenum 
 			frame_sizes->type = V4L2_FRMSIZE_TYPE_STEPWISE;
 			frame_sizes->stepwise.min_width = 64;
 			frame_sizes->stepwise.max_width = 4096;
-			frame_sizes->stepwise.step_width = 64;
+			frame_sizes->stepwise.step_width = 8;
 			frame_sizes->stepwise.min_height = 64;
 			frame_sizes->stepwise.max_height = 4096;
-			frame_sizes->stepwise.step_height = 64;
+			frame_sizes->stepwise.step_height = 8;
 			break;
 
 		default:
 			pr_err("unexpected value, frame_sizes->pixel_format=0x%X\n", (int)frame_sizes->pixel_format);
-			err = EINVAL;
+			err = -EINVAL;
 
 			goto err0;
 			break;
@@ -663,7 +667,7 @@ int qvio_video_enum_framesizes(struct qvio_video* self, struct v4l2_frmsizeenum 
 
 	default:
 		pr_err("unexpected value, frame_sizes->index=%d\n", (int)frame_sizes->index);
-		err = EINVAL;
+		err = -EINVAL;
 
 		goto err0;
 		break;
@@ -682,8 +686,38 @@ int qvio_video_enum_frameintervals(struct qvio_video* self, struct v4l2_frmivale
 
 	pr_info("\n");
 
-	err = EINVAL;
+	switch(frame_intervals->index) {
+	case 0:
+		switch(frame_intervals->pixel_format) {
+		case V4L2_PIX_FMT_YUYV:
+		case V4L2_PIX_FMT_NV12:
+			frame_intervals->type = V4L2_FRMIVAL_TYPE_DISCRETE;
+			frame_intervals->discrete.numerator = 1;
+			frame_intervals->discrete.denominator = 60;
+			break;
 
+		default:
+			pr_err("unexpected value, frame_intervals->pixel_format=0x%X\n", (int)frame_intervals->pixel_format);
+			err = -EINVAL;
+
+			goto err0;
+			break;
+		}
+		break;
+
+	default:
+		pr_err("unexpected value, frame_intervals->index=%d\n", (int)frame_intervals->index);
+		err = -EINVAL;
+
+		goto err0;
+		break;
+	}
+
+	err = 0;
+
+	return err;
+
+err0:
 	return err;
 }
 

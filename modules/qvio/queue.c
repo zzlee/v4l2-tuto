@@ -489,6 +489,10 @@ static int __stream_main(void * data) {
 			continue;
 		}
 
+		buf->vb.vb2_buf.timestamp = ktime_get_ns();
+		buf->vb.field = V4L2_FIELD_NONE;
+		buf->vb.sequence = self->sequence++;
+
 		vb2_buffer_done(&buf->vb.vb2_buf, VB2_BUF_STATE_DONE);
 		buf = NULL;
 
