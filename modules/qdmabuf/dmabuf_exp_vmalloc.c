@@ -131,7 +131,7 @@ static struct sg_table * exp_vmalloc_map_dma_buf(struct dma_buf_attachment *db_a
 	struct mutex *lock = &db_attach->dmabuf->lock;
 	struct sg_table *sgt;
 
-#if LINUX_VERSION_CODE <= KERNEL_VERSION(5,9,0)
+#if LINUX_VERSION_CODE <= KERNEL_VERSION(5,10,120)
 #else
 	int err;
 #endif
@@ -198,20 +198,26 @@ static void exp_vmalloc_unmap_dma_buf(struct dma_buf_attachment * db_attach, str
 	/* nothing to be done here */
 }
 
-#if LINUX_VERSION_CODE <= KERNEL_VERSION(5,10,120)
+#if LINUX_VERSION_CODE < KERNEL_VERSION(5,11,0)
 static void * exp_vmalloc_vmap(struct dma_buf *dbuf)
-#else
+#elif LINUX_VERSION_CODE < KERNEL_VERSION(5,19,0)
 static int exp_vmalloc_vmap(struct dma_buf *dbuf, struct dma_buf_map *map)
+#else
+static int exp_vmalloc_vmap(struct dma_buf *dbuf, struct iosys_map *map)
 #endif
 {
 	struct exp_vmalloc_buffer *buf = dbuf->priv;
 
 	pr_info("buf=%p\n", buf);
 
-#if LINUX_VERSION_CODE <= KERNEL_VERSION(5,10,120)
+#if LINUX_VERSION_CODE < KERNEL_VERSION(5,11,0)
 	return buf->vaddr;
-#else
+#elif LINUX_VERSION_CODE < KERNEL_VERSION(5,18,0)
 	dma_buf_map_set_vaddr(map, buf->vaddr);
+
+	return 0;
+#else
+	iosys_map_set_vaddr(map, buf->vaddr);
 
 	return 0;
 #endif

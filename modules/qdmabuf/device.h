@@ -12,10 +12,6 @@ struct qdmabuf_device {
 	// cdev
 	dev_t cdevno;
 	struct cdev cdev;
-
-	// wait-queue
-	wait_queue_head_t wq_head;
-	__u32 wq_event;
 };
 
 int qdmabuf_device_register(void);

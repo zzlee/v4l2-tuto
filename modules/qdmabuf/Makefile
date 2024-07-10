@@ -11,8 +11,7 @@ qdmabuf-objs := \
 	dmabuf_exp.o \
 	dmabuf_exp_dma_contig.o \
 	dmabuf_exp_dma_sg.o \
-	dmabuf_exp_vmalloc.o \
-	dmabuf_exp_sys_heap.o
+	dmabuf_exp_vmalloc.o
 
 ccflags-y += \
 -DQDMABUF_MODULE_VERSION=\"$(MODULE_VERSION)\"

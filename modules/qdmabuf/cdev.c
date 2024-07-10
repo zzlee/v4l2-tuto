@@ -88,10 +88,6 @@ static long __file_ioctl(struct file * filp, unsigned int cmd, unsigned long arg
 		ret = qdmabuf_ioctl_info(device, arg);
 		break;
 
-	case QDMABUF_IOCTL_WQ:
-		ret = qdmabuf_ioctl_wq(device, arg);
-		break;
-
 	default:
 		ret = -EINVAL;
 		break;

@@ -92,8 +92,6 @@ struct qdmabuf_device* qdmabuf_device_new(void) {
 
 	kref_init(&self->ref);
 	qdmabuf_cdev_init(self);
-	init_waitqueue_head(&self->wq_head);
-	self->wq_event = 0;
 
 	return self;
 }

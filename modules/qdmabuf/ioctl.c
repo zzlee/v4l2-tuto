@@ -59,14 +59,6 @@ long qdmabuf_ioctl_alloc(struct qdmabuf_device* device, unsigned long arg) {
 			dev, args.len, args.fd_flags, args.dma_dir);
 		break;
 
-#if LINUX_VERSION_CODE <= KERNEL_VERSION(5,9,0)
-#else
-	case QDMABUF_TYPE_SYS_HEAP:
-		ret = qdmabuf_dmabuf_alloc_sys_heap(
-			dev, args.len, args.fd_flags, args.dma_dir);
-		break;
-#endif
-
 	default:
 		ret = -EINVAL;
 		break;
@@ -156,66 +148,6 @@ err2:
 	dma_buf_detach(dmabuf, attach);
 err1:
 	dma_buf_put(dmabuf);
-err0:
-	return ret;
-}
-
-long qdmabuf_ioctl_wq(struct qdmabuf_device* device, unsigned long arg) {
-	long ret;
-	struct qdmabuf_wq_args args;
-	__u32 last_wq_event;
-	int err;
-
-	pr_info("\n");
-
-	ret = copy_from_user(&args, (void __user *)arg, sizeof(args));
-	if (ret != 0) {
-		pr_err("copy_from_user() failed, err=%d\n", (int)ret);
-
-		ret = -EFAULT;
-		goto err0;
-	}
-
-	switch(args.type) {
-	case 0: // consumer
-		last_wq_event = device->wq_event;
-		err = wait_event_interruptible(device->wq_head, (last_wq_event != device->wq_event));
-		if(err) {
-			pr_err("wait_event_interruptible() failed, err=%d\n", err);
-			ret = err;
-			break;
-		}
-
-		pr_info("device->wq_event=%d\n", (int)device->wq_event);
-		args.value = device->wq_event;
-
-		ret = copy_to_user((void __user *)arg, &args, sizeof(args));
-		if (ret != 0) {
-			pr_err("copy_to_user() failed, err=%d\n", (int)ret);
-
-			ret = -EFAULT;
-			goto err0;
-		}
-
-		ret = 0;
-		break;
-
-	case 1: // producer
-		device->wq_event = args.value;
-		pr_info("device->wq_event=%d\n", (int)device->wq_event);
-
-		wake_up_interruptible(&device->wq_head);
-		ret = 0;
-		break;
-
-	default:
-		pr_err("unexpected value, args.type=%d\n", args.type);
-		ret = -EINVAL;
-		goto err0;
-		break;
-	}
-
-
 err0:
 	return ret;
 }
