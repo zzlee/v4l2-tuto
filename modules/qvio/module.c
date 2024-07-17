@@ -4,6 +4,7 @@
 #include <linux/module.h>
 
 #include "version.h"
+#include "cdev.h"
 #include "platform_device.h"
 #include "pci_device.h"
 
@@ -22,22 +23,34 @@ static int __init qvio_mod_init(void)
 
 	pr_info("%s", version);
 
+	err = qvio_cdev_register();
+	if (err != 0) {
+		pr_err("qvio_cdev_register() failed, err=%d\n", err);
+		goto err0;
+	}
+
 #if 0
 	err = qvio_device_platform_register();
 	if (err != 0) {
 		pr_err("qvio_device_platform_register() failed, err=%d\n", err);
-		goto err0;
+		goto err1;
 	}
 #endif
 
 	err = qvio_device_pci_register();
 	if (err != 0) {
 		pr_err("qvio_device_pci_register() failed, err=%d\n", err);
-		goto err0;
+		goto err2;
 	}
 
 	return 0;
 
+err2:
+#if 0
+	qvio_device_platform_unregister();
+err1:
+#endif
+	qvio_cdev_unregister();
 err0:
 	return err;
 }
@@ -51,6 +64,8 @@ static void __exit qvio_mod_exit(void)
 #if 0
 	qvio_device_platform_unregister();
 #endif
+
+	qvio_cdev_unregister();
 }
 
 module_init(qvio_mod_init);

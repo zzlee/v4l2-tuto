@@ -232,7 +232,7 @@ namespace __05_user_ctrl__ {
 		explicit UserCtrl();
 		~UserCtrl();
 
-		int Open(int nVidFd);
+		int Open(const char* fn);
 		void Close();
 
 		uint32_t ReadRegister(int nOffset);
@@ -247,7 +247,6 @@ namespace __05_user_ctrl__ {
 		char **argv;
 
 		ZzUtils::FreeStack oFreeStack;
-		int nVidFd;
 		UserCtrl oUserCtrl;
 
 		App(int argc, char **argv);
@@ -255,7 +254,7 @@ namespace __05_user_ctrl__ {
 
 		int Run();
 
-		void OpenVidRx();
+		void OpenUserCtrl();
 		void UserCtrl1();
 		void UserCtrl2();
 		void UserCtrl3();
@@ -274,14 +273,14 @@ namespace __05_user_ctrl__ {
 	UserCtrl::~UserCtrl() {
 	}
 
-	int UserCtrl::Open(int nVidFd) {
+	int UserCtrl::Open(const char* fn) {
 		int err = 0;
 
 		switch(1) { case 1:
-			err = ioctl(nVidFd, QVID_IOC_USER_CTRL_FD, &nFd);
-			if(err) {
+			nFd = open(fn, O_RDWR | O_NONBLOCK);
+			if(nFd == -1) {
 				err = errno;
-				LOGE("%s(%d): ioctl(QVID_IOC_USER_CTRL_FD) failed, err=%d", __FUNCTION__, __LINE__, err);
+				LOGE("%s(%d): open() failed, err=%d", __FUNCTION__, __LINE__, err);
 				break;
 			}
 			oFreeStack += [&]() {
@@ -575,8 +574,6 @@ namespace __05_user_ctrl__ {
 		srand((unsigned)time(NULL));
 
 		switch(1) { case 1:
-			nVidFd = -1;
-
 			ZzUtils::TestLoop([&](int ch) -> int {
 				int err = 0;
 
@@ -585,7 +582,7 @@ namespace __05_user_ctrl__ {
 				switch(ch) {
 				case 'r':
 				case 'R':
-					OpenVidRx();
+					OpenUserCtrl();
 					break;
 
 				case '1':
@@ -628,37 +625,13 @@ namespace __05_user_ctrl__ {
 		return err;
 	}
 
-	void App::OpenVidRx() {
+	void App::OpenUserCtrl() {
 		int err;
 
 		LOGD("%s(%d):...", __FUNCTION__, __LINE__);
 
 		switch(1) { case 1:
-			if(nVidFd != -1) {
-				LOGE("%s(%d): unexpected value, nVidFd=%d", __FUNCTION__, __LINE__, nVidFd);
-				break;
-			}
-
-			nVidFd = open("/dev/video0", O_RDWR | O_NONBLOCK);
-			if(nVidFd == -1) {
-				err = errno;
-				LOGE("%s(%d): open() failed, err=%d", __FUNCTION__, __LINE__, err);
-				break;
-			}
-			oFreeStack += [&]() {
-				int err;
-
-				err = close(nVidFd);
-				if(err) {
-					err = errno;
-					LOGE("%s(%d): close() failed, err=%d", __FUNCTION__, __LINE__, err);
-				}
-				nVidFd = -1;
-			};
-
-			LOGD("nVidFd=%d", nVidFd);
-
-			err = oUserCtrl.Open(nVidFd);
+			err = oUserCtrl.Open("/dev/qvio0");
 			if(err) {
 				err = errno;
 				LOGE("%s(%d): oUserCtrl.Open() failed, err=%d", __FUNCTION__, __LINE__, err);

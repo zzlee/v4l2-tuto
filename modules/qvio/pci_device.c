@@ -2,6 +2,7 @@
 
 #include "pci_device.h"
 #include "device.h"
+#include "cdev.h"
 
 #include "libxdma_api.h"
 #include "libxdma.h"
@@ -12,21 +13,25 @@
 
 static const struct pci_device_id __pci_ids[] = {
 	{ PCI_DEVICE(0x12AB, 0x0710), },
+	{ PCI_DEVICE(0x12AB, 0x0750), },
 	{0,}
 };
 MODULE_DEVICE_TABLE(pci, __pci_ids);
 
-static int __user_ctrl_release(struct inode *inode, struct file *filp) {
-	struct qvio_video* self = filp->private_data;
+static int __file_open(struct inode *inode, struct file *filp) {
+	struct qvio_device* device = container_of(inode->i_cdev, struct qvio_device, cdev);
 
-	pr_info("self=%p\n", self);
+	pr_info("device=%p\n", device);
+
+	filp->private_data = device;
+	nonseekable_open(inode, filp);
 
 	return 0;
 }
 
-static ssize_t __user_ctrl_read(struct file *filp, char __user *buf, size_t count, loff_t *pos)
+static ssize_t __file_read(struct file *filp, char __user *buf, size_t count, loff_t *pos)
 {
-	struct qvio_video* self = filp->private_data;
+	struct qvio_device* self = filp->private_data;
 	struct xdma_dev *xdev;
 	void __iomem *reg;
 	u32 w;
@@ -38,7 +43,7 @@ static ssize_t __user_ctrl_read(struct file *filp, char __user *buf, size_t coun
 	if (*pos & 3)
 		return -EPROTO;
 	/* first address is BAR base plus file position offset */
-	reg = xdev->bar[self->bar_idx] + *pos;
+	reg = xdev->bar[xdev->user_bar_idx] + *pos;
 	//w = read_register(reg);
 	w = ioread32(reg);
 	dbg_sg("%s(@%p, count=%ld, pos=%d) value = 0x%08x\n",
@@ -51,9 +56,9 @@ static ssize_t __user_ctrl_read(struct file *filp, char __user *buf, size_t coun
 	return 4;
 }
 
-static ssize_t __user_ctrl_write(struct file *filp, const char __user *buf, size_t count, loff_t *pos)
+static ssize_t __file_write(struct file *filp, const char __user *buf, size_t count, loff_t *pos)
 {
-	struct qvio_video* self = filp->private_data;
+	struct qvio_device* self = filp->private_data;
 	struct xdma_dev *xdev;
 	void __iomem *reg;
 	u32 w;
@@ -66,7 +71,7 @@ static ssize_t __user_ctrl_write(struct file *filp, const char __user *buf, size
 		return -EPROTO;
 
 	/* first address is BAR base plus file position offset */
-	reg = xdev->bar[self->bar_idx] + *pos;
+	reg = xdev->bar[xdev->user_bar_idx] + *pos;
 	rv = copy_from_user(&w, buf, 4);
 	if (rv)
 		pr_info("copy from user failed %d/4, but continuing.\n", rv);
@@ -80,9 +85,9 @@ static ssize_t __user_ctrl_write(struct file *filp, const char __user *buf, size
 }
 
 /* maps the PCIe BAR into user space for memory-like access using mmap() */
-static int __user_ctrl_mmap(struct file *filp, struct vm_area_struct *vma)
+static int __file_mmap(struct file *filp, struct vm_area_struct *vma)
 {
-	struct qvio_video* self = filp->private_data;
+	struct qvio_device* self = filp->private_data;
 	struct xdma_dev *xdev;
 	unsigned long off;
 	unsigned long phys;
@@ -94,13 +99,13 @@ static int __user_ctrl_mmap(struct file *filp, struct vm_area_struct *vma)
 
 	off = vma->vm_pgoff << PAGE_SHIFT;
 	/* BAR physical address */
-	phys = pci_resource_start(xdev->pdev, self->bar_idx) + off;
+	phys = pci_resource_start(xdev->pdev, xdev->user_bar_idx) + off;
 	vsize = vma->vm_end - vma->vm_start;
 	/* complete resource */
-	psize = pci_resource_end(xdev->pdev, self->bar_idx) -
-		pci_resource_start(xdev->pdev, self->bar_idx) + 1 - off;
+	psize = pci_resource_end(xdev->pdev, xdev->user_bar_idx) -
+		pci_resource_start(xdev->pdev, xdev->user_bar_idx) + 1 - off;
 
-	pr_info("self->bar_idx = %d\n", self->bar_idx);
+	pr_info("xdev->user_bar_idx = %d\n", xdev->user_bar_idx);
 	pr_info("xdev = 0x%p\n", xdev);
 	pr_info("pci_dev = 0x%08lx\n", (unsigned long)xdev->pdev);
 	pr_info("off = 0x%lx, vsize 0x%lu, psize 0x%lu.\n", off, vsize, psize);
@@ -120,7 +125,12 @@ static int __user_ctrl_mmap(struct file *filp, struct vm_area_struct *vma)
 	 * prevent touching the pages (byte access) for swap-in,
 	 * and prevent the pages from being swapped out
 	 */
+#if KERNEL_VERSION(6, 3, 0) <= LINUX_VERSION_CODE
+	vma->__vm_flags |= VMEM_FLAGS;
+#else
 	vma->vm_flags |= VMEM_FLAGS;
+#endif
+
 	/* make MMIO accessible to user space */
 	rv = io_remap_pfn_range(vma, vma->vm_start, phys >> PAGE_SHIFT,
 			vsize, vma->vm_page_prot);
@@ -132,9 +142,9 @@ static int __user_ctrl_mmap(struct file *filp, struct vm_area_struct *vma)
 	return 0;
 }
 
-static long __user_ctrl_ioctl(struct file *filp, unsigned int cmd, unsigned long arg)
+static long __file_ioctl(struct file *filp, unsigned int cmd, unsigned long arg)
 {
-	struct qvio_video* self = filp->private_data;
+	struct qvio_device* self = filp->private_data;
 	struct xdma_dev *xdev;
 
 	xdev = self->xdev;
@@ -166,13 +176,13 @@ static long __user_ctrl_ioctl(struct file *filp, unsigned int cmd, unsigned long
 	return 0;
 }
 
-static const struct file_operations user_ctrl_fops = {
+static const struct file_operations __fops = {
 	.owner = THIS_MODULE,
-	.release = __user_ctrl_release,
-	.read = __user_ctrl_read,
-	.write = __user_ctrl_write,
-	.mmap = __user_ctrl_mmap,
-	.unlocked_ioctl = __user_ctrl_ioctl,
+	.open = __file_open,
+	.read = __file_read,
+	.write = __file_write,
+	.mmap = __file_mmap,
+	.unlocked_ioctl = __file_ioctl,
 };
 
 static int __pci_probe(struct pci_dev *pdev, const struct pci_device_id *id) {
@@ -209,19 +219,19 @@ static int __pci_probe(struct pci_dev *pdev, const struct pci_device_id *id) {
 	if (self->user_max > MAX_USER_IRQ) {
 		pr_err("Maximum users limit reached\n");
 		err = -EINVAL;
-		goto err1;
+		goto err2;
 	}
 
 	if (self->h2c_channel_max > XDMA_CHANNEL_NUM_MAX) {
 		pr_err("Maximun H2C channel limit reached\n");
 		err = -EINVAL;
-		goto err1;
+		goto err2;
 	}
 
 	if (self->c2h_channel_max > XDMA_CHANNEL_NUM_MAX) {
 		pr_err("Maximun C2H channel limit reached\n");
 		err = -EINVAL;
-		goto err1;
+		goto err2;
 	}
 
 	if (!self->h2c_channel_max && !self->c2h_channel_max)
@@ -233,7 +243,7 @@ static int __pci_probe(struct pci_dev *pdev, const struct pci_device_id *id) {
 		err = xdma_user_isr_enable(hndl, mask);
 		if (err) {
 			pr_err("xdma_user_isr_enable() failed, err=%d\n", err);
-			goto err1;
+			goto err2;
 		}
 	}
 
@@ -242,13 +252,13 @@ static int __pci_probe(struct pci_dev *pdev, const struct pci_device_id *id) {
 	if (!xdev) {
 		pr_warn("NO xdev found!\n");
 		err = -EINVAL;
-		goto err1;
+		goto err2;
 	}
 
 	if (hndl != xdev) {
 		pr_err("xdev handle mismatch\n");
 		err = -EINVAL;
-		goto err1;
+		goto err2;
 	}
 
 	pr_info("%s xdma%d, pdev 0x%p, xdev 0x%p, usr %d, ch %d,%d.\n",
@@ -258,11 +268,18 @@ static int __pci_probe(struct pci_dev *pdev, const struct pci_device_id *id) {
 
 	self->xdev = hndl;
 
+	self->cdev_fops = &__fops;
+	err = qvio_cdev_start(self);
+	if(err) {
+		pr_err("qvio_cdev_start() failed, err=%d\n", err);
+		goto err2;
+	}
+
 	self->video[0] = qvio_video_new();
 	if(! self) {
 		pr_err("qvio_video_new() failed\n");
 		err = -ENOMEM;
-		goto err2;
+		goto err3;
 	}
 
 	self->video[0]->user_job_ctrl.enable = false;
@@ -280,21 +297,21 @@ static int __pci_probe(struct pci_dev *pdev, const struct pci_device_id *id) {
 	self->video[0]->queue.xdev = self->xdev;
 	self->video[0]->queue.channel = 0;
 
-	self->video[0]->user_ctrl_fops = &user_ctrl_fops;
-
 	self->video[0]->xdev = self->xdev;
 	self->video[0]->bar_idx = self->xdev->user_bar_idx;
 
 	err = qvio_video_start(self->video[0]);
 	if(err) {
 		pr_err("qvio_qvio_start() failed, err=%d\n", err);
-		goto err3;
+		goto err4;
 	}
 
 	return 0;
 
-err3:
+err4:
 	qvio_video_put(self->video[0]);
+err3:
+	qvio_cdev_stop(self);
 err2:
 	xdma_device_close(self->pci_dev, self->xdev);
 err1:
@@ -313,6 +330,7 @@ static void __pci_remove(struct pci_dev *pdev) {
 
 	qvio_video_stop(self->video[0]);
 	qvio_video_put(self->video[0]);
+	qvio_cdev_stop(self);
 	xdma_device_close(self->pci_dev, self->xdev);
 	qvio_device_put(self);
 	dev_set_drvdata(&pdev->dev, NULL);

@@ -2,12 +2,46 @@
 
 #include "platform_device.h"
 #include "device.h"
+#include "cdev.h"
 
 #include <linux/platform_device.h>
+#include <media/v4l2-device.h>
 
 #define DRV_MODULE_NAME "qvio"
 
-static int __platform_probe(struct platform_device *pdev) {
+static int __file_open(struct inode *inode, struct file *filp) {
+	struct qvio_device* device = container_of(inode->i_cdev, struct qvio_device, cdev);
+
+	pr_info("device=%p\n", device);
+
+	filp->private_data = device;
+	nonseekable_open(inode, filp);
+
+	return 0;
+}
+
+static long __file_ioctl(struct file * filp, unsigned int cmd, unsigned long arg) {
+	long ret;
+	struct qvio_device* device = filp->private_data;
+
+	pr_info("device=%p, cmd=%u\n", device, cmd);
+
+	switch(cmd) {
+	default:
+		pr_err("unexpected, cmd=%d\n", cmd);
+		ret = -EINVAL;
+		break;
+	}
+
+	return ret;
+}
+
+static struct file_operations __fops = {
+	.open = __file_open,
+	.unlocked_ioctl = __file_ioctl,
+};
+
+static int __probe(struct platform_device *pdev) {
 	int err = 0;
 	struct qvio_device* self;
 
@@ -24,6 +58,13 @@ static int __platform_probe(struct platform_device *pdev) {
 	self->pdev = pdev;
 	platform_set_drvdata(pdev, self);
 
+	self->cdev_fops = &__fops;
+	err = qvio_cdev_start(self);
+	if(err) {
+		pr_err("qvio_cdev_start() failed, err=%d\n", err);
+		goto err0_1;
+	}
+
 	self->video[0] = qvio_video_new();
 	if(! self) {
 		pr_err("qvio_video_new() failed\n");
@@ -37,7 +78,7 @@ static int __platform_probe(struct platform_device *pdev) {
 	self->video[0]->buffer_type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
 	self->video[0]->device_caps = V4L2_CAP_VIDEO_CAPTURE | V4L2_CAP_STREAMING;
 	snprintf(self->video[0]->bus_info, sizeof(self->video[0]->bus_info), "platform");
-	snprintf(self->video[0]->v4l2_dev.name, V4L2_DEVICE_NAME_SIZE, "qvio-rx");
+	snprintf(self->video[0]->v4l2_dev.name, sizeof(self->video[0]->v4l2_dev.name), "qvio-rx");
 
 	err = qvio_video_start(self->video[0]);
 	if(err) {
@@ -50,18 +91,21 @@ static int __platform_probe(struct platform_device *pdev) {
 err2:
 	qvio_video_put(self->video[0]);
 err1:
+	qvio_cdev_stop(self);
+err0_1:
 	qvio_device_put(self);
 err0:
 	return err;
 }
 
-static int __platform_remove(struct platform_device *pdev) {
+static int __remove(struct platform_device *pdev) {
 	struct qvio_device* self = platform_get_drvdata(pdev);
 
 	pr_info("\n");
 
 	qvio_video_stop(self->video[0]);
 	qvio_video_put(self->video[0]);
+	qvio_cdev_stop(self);
 	qvio_device_put(self);
 	platform_set_drvdata(pdev, NULL);
 
@@ -72,8 +116,8 @@ static struct platform_driver platform_driver = {
 	.driver = {
 		.name = DRV_MODULE_NAME
 	},
-	.probe  = __platform_probe,
-	.remove = __platform_remove,
+	.probe  = __probe,
+	.remove = __remove,
 };
 
 static struct platform_device *pdev_qvio;

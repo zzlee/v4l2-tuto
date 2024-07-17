@@ -334,21 +334,6 @@ static long __ioctl_default(struct file *file, void *fh, bool valid_prio, unsign
 		ret = qvio_video_buf_done(self);
 		break;
 
-	case QVID_IOC_USER_CTRL_FD: {
-		int* pFd = (int*)arg;
-
-		if(self->user_ctrl_fops) {
-			*pFd = __anon_fd("qvio-user-ctrl", self->user_ctrl_fops, self, O_RDWR | O_CLOEXEC);
-			ret = 0;
-
-			pr_info("fd=%d\n", *pFd);
-		} else {
-			pr_err("unexpected, self->user_ctrl_fops=%p\n", self->user_ctrl_fops);
-			ret = -EINVAL;
-		}
-	}
-		break;
-
 	default:
 		ret = -ENOIOCTLCMD;
 		break;

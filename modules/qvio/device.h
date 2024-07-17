@@ -19,6 +19,11 @@ struct qvio_device {
 	struct platform_device *pdev;
 	struct pci_dev *pci_dev;
 
+	// cdev
+	dev_t cdevno;
+	struct cdev cdev;
+	const struct file_operations* cdev_fops;
+
 	// xdma
 	struct xdma_dev *xdev;
 	int user_max;

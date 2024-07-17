@@ -28,9 +28,6 @@ struct qvio_video {
 	// user job
 	struct qvio_user_job_ctrl user_job_ctrl;
 
-	// user control
-	const struct file_operations* user_ctrl_fops;
-
 	// xdma
 	struct xdma_dev *xdev;
 	int bar_idx;

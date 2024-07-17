@@ -27,7 +27,7 @@ struct qvio_device* qvio_device_get(struct qvio_device* self) {
 	return self;
 }
 
-static void qvio_device_free(struct kref *ref)
+static void __free(struct kref *ref)
 {
 	struct qvio_device* self = container_of(ref, struct qvio_device, ref);
 
@@ -38,5 +38,5 @@ static void qvio_device_free(struct kref *ref)
 
 void qvio_device_put(struct qvio_device* self) {
 	if (self)
-		kref_put(&self->ref, qvio_device_free);
+		kref_put(&self->ref, __free);
 }

@@ -48,7 +48,6 @@ namespace __02_qdmabuf_ctl__ {
 		int fd_dma_buf_dma_contig[4];
 		int fd_dma_buf_dma_sg[4];
 		int fd_dma_buf_vmalloc[4];
-		int fd_dma_buf_sys_heap[4];
 
 		void* dma_buf_mmap_addr[4];
 
@@ -248,49 +247,6 @@ namespace __02_qdmabuf_ctl__ {
 					LOGE("%s(%d): munmap() failed, err=%d", __FUNCTION__, __LINE__, err);
 				}
 			}
-
-			if(err < 0)
-				break;
-#endif
-
-#if 0
-			buf_size = 1 * 1024 * getpagesize();
-			for(int i = 0;i < 4;i++) {
-				qdmabuf_alloc_args args;
-				args.len = buf_size;
-				args.type = QDMABUF_TYPE_SYS_HEAP;
-				args.fd_flags = O_RDWR | O_CLOEXEC;
-				args.dma_dir = QDMABUF_DMA_DIR_BIDIRECTIONAL;
-				args.fd = 0;
-				err = ioctl(fd_qdmabuf, QDMABUF_IOCTL_ALLOC, &args);
-				if(err < 0) {
-					LOGE("%s(%d): ioctl(QDMABUF_IOCTL_ALLOC) failed, err=%d", __FUNCTION__, __LINE__, err);
-					break;
-				}
-
-				LOGD("args={.len=%d, .fd=%d}", args.len, args.fd);
-
-				fd_dma_buf_sys_heap[i] = args.fd;
-				oFreeStack += [&]() {
-					close(fd_dma_buf_sys_heap[i]);
-				};
-			}
-
-			if(err < 0)
-				break;
-
-			LOGD("+QDMABUF_IOCTL_INFO");
-			for(int i = 0;i < 4;i++) {
-				qdmabuf_info_args args;
-				args.fd = fd_dma_buf_sys_heap[i];
-				err = ioctl(fd_qdmabuf, QDMABUF_IOCTL_INFO, &args);
-				if(err) {
-					err = errno;
-					LOGE("%s(%d): ioctl(QDMABUF_IOCTL_INFO) failed, err=%d", __FUNCTION__, __LINE__, err);
-					break;
-				}
-			}
-			LOGD("-QDMABUF_IOCTL_INFO");
 
 			if(err < 0)
 				break;

@@ -19,7 +19,7 @@ struct qvio_video* qvio_video_new(void) {
 	self->buffer_type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
 	self->halign = 0x40;
 	self->valign = 1;
-	qvio_user_job_init(&self->user_job_ctrl);
+	qvio_user_job_start(&self->user_job_ctrl);
 
 	return self;
 }
@@ -31,19 +31,19 @@ struct qvio_video* qvio_video_get(struct qvio_video* self) {
 	return self;
 }
 
-static void qvio_video_free(struct kref *ref)
+static void __free(struct kref *ref)
 {
 	struct qvio_video* self = container_of(ref, struct qvio_video, ref);
 
 	pr_info("\n");
 
-	qvio_user_job_uninit(&self->user_job_ctrl);
+	qvio_user_job_stop(&self->user_job_ctrl);
 	kfree(self);
 }
 
 void qvio_video_put(struct qvio_video* self) {
 	if (self)
-		kref_put(&self->ref, qvio_video_free);
+		kref_put(&self->ref, __free);
 }
 
 static const struct v4l2_file_operations qvio_video_fops = {

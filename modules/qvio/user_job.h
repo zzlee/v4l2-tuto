@@ -30,8 +30,8 @@ struct qvio_user_job_ctrl {
 	const struct file_operations* ctrl_fops;
 };
 
-void qvio_user_job_init(struct qvio_user_job_ctrl* self);
-void qvio_user_job_uninit(struct qvio_user_job_ctrl* self);
+void qvio_user_job_start(struct qvio_user_job_ctrl* self);
+void qvio_user_job_stop(struct qvio_user_job_ctrl* self);
 
 // user-job
 int qvio_user_job_s_fmt(struct qvio_user_job_ctrl* self, struct v4l2_format *format);

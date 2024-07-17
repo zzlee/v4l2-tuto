@@ -199,7 +199,7 @@ static const struct file_operations __fileops = {
 #endif
 };
 
-void qvio_user_job_init(struct qvio_user_job_ctrl* self) {
+void qvio_user_job_start(struct qvio_user_job_ctrl* self) {
 	pr_info("\n");
 
 	self->enable = true;
@@ -216,7 +216,7 @@ void qvio_user_job_init(struct qvio_user_job_ctrl* self) {
 	self->ctrl_fops = &__fileops;
 }
 
-void qvio_user_job_uninit(struct qvio_user_job_ctrl* self) {
+void qvio_user_job_stop(struct qvio_user_job_ctrl* self) {
 	struct __user_job_entry *user_job_entry;
 	struct __user_job_done_entry *user_job_done_entry;
 

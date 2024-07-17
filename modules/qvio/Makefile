@@ -6,8 +6,9 @@ obj-m += qvio.o
 qvio-objs := \
 	module.o \
 	queue.o \
-	video.o \
 	device.o \
+	cdev.o \
+	video.o \
 	ioctl.o \
 	user_job.o \
 	platform_device.o
@@ -20,6 +21,18 @@ qvio-objs += \
 ccflags-y += \
 -O3 \
 -DQVIO_MODULE_VERSION=\"$(MODULE_VERSION)\"
+
+ifeq (${BUILD_SC0710},ON)
+ccflags-y += \
+-DBUILD_SC0710=1
+$(info BUILD_SC0710)
+endif
+
+ifeq (${BUILD_SC0750},ON)
+ccflags-y += \
+-DBUILD_SC0750=1
+$(info BUILD_SC0750)
+endif
 
 # ccflags-y += -D__LIBXDMA_DEBUG__
 
