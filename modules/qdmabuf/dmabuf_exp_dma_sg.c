@@ -143,7 +143,7 @@ static struct sg_table * exp_dma_sg_map_dma_buf(struct dma_buf_attachment *db_at
 	enum dma_data_direction dma_dir) {
 	struct exp_dma_sg_attachment *attach = db_attach->priv;
 	/* stealing dmabuf mutex to serialize map/unmap operations */
-	struct mutex *lock = &db_attach->dmabuf->lock;
+	// struct mutex *lock = &db_attach->dmabuf->lock;
 	struct sg_table *sgt;
 
 #if LINUX_VERSION_CODE <= KERNEL_VERSION(5,10,120)
@@ -160,7 +160,7 @@ static struct sg_table * exp_dma_sg_map_dma_buf(struct dma_buf_attachment *db_at
 		goto err0;
 	}
 
-	mutex_lock(lock);
+	// mutex_lock(lock);
 
 	sgt = &attach->sgt;
 	/* return previously mapped sg table */
@@ -198,11 +198,11 @@ static struct sg_table * exp_dma_sg_map_dma_buf(struct dma_buf_attachment *db_at
 	attach->dma_dir = dma_dir;
 
 done:
-	mutex_unlock(lock);
+	// mutex_unlock(lock);
 	return sgt;
 
 err1:
-	mutex_unlock(lock);
+	// mutex_unlock(lock);
 err0:
 	return sgt;
 }

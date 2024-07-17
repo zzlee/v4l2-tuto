@@ -128,7 +128,7 @@ static void exp_vmalloc_dma_buf_release(struct dma_buf *dbuf) {
 static struct sg_table * exp_vmalloc_map_dma_buf(struct dma_buf_attachment *db_attach, enum dma_data_direction dma_dir) {
 	struct exp_vmalloc_attachment *attach = db_attach->priv;
 	/* stealing dmabuf mutex to serialize map/unmap operations */
-	struct mutex *lock = &db_attach->dmabuf->lock;
+	// struct mutex *lock = &db_attach->dmabuf->lock;
 	struct sg_table *sgt;
 
 #if LINUX_VERSION_CODE <= KERNEL_VERSION(5,10,120)
@@ -145,7 +145,7 @@ static struct sg_table * exp_vmalloc_map_dma_buf(struct dma_buf_attachment *db_a
 		goto err0;
 	}
 
-	mutex_lock(lock);
+	// mutex_lock(lock);
 
 	sgt = &attach->sgt;
 	/* return previously mapped sg table */
@@ -183,11 +183,11 @@ static struct sg_table * exp_vmalloc_map_dma_buf(struct dma_buf_attachment *db_a
 	attach->dma_dir = dma_dir;
 
 done:
-	mutex_unlock(lock);
+	// mutex_unlock(lock);
 	return sgt;
 
 err1:
-	mutex_unlock(lock);
+	// mutex_unlock(lock);
 err0:
 	return sgt;
 }
@@ -244,8 +244,11 @@ static int exp_vmalloc_mmap(struct dma_buf *dbuf, struct vm_area_struct *vma) {
 	/*
 	 * Make sure that vm_areas for 2 buffers won't be merged together
 	 */
+#if KERNEL_VERSION(6, 3, 0) <= LINUX_VERSION_CODE
+	vma->__vm_flags |= VM_DONTEXPAND;
+#else
 	vma->vm_flags |= VM_DONTEXPAND;
-
+#endif
 	/*
 	 * Use common vm_area operations to track buffer refcount.
 	 */

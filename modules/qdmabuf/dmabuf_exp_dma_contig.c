@@ -262,7 +262,12 @@ static int exp_dma_contig_mmap(struct dma_buf *dbuf, struct vm_area_struct *vma)
 		goto err0;
 	}
 
+#if KERNEL_VERSION(6, 3, 0) <= LINUX_VERSION_CODE
+	vma->__vm_flags |= VM_DONTEXPAND | VM_DONTDUMP;
+#else
 	vma->vm_flags |= VM_DONTEXPAND | VM_DONTDUMP;
+#endif
+
 	vma->vm_private_data = &buf->handler;
 	vma->vm_ops = &dmabuf_exp_vm_ops;
 

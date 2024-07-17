@@ -8,7 +8,7 @@
 
 static struct qdmabuf_device* g_dev_dmabuf;
 
-static int probe(struct platform_device *pdev) {
+static int __probe(struct platform_device *pdev) {
 	int err = 0;
 
 	pr_info("\n");
@@ -44,7 +44,7 @@ err0:
 	return err;
 }
 
-static int remove(struct platform_device *pdev) {
+static int __remove(struct platform_device *pdev) {
 	int err = 0;
 
 	pr_info("\n");
@@ -60,8 +60,8 @@ static struct platform_driver qdmabuf_driver = {
 	.driver = {
 		.name = QDMABUF_DRIVER_NAME
 	},
-	.probe  = probe,
-	.remove = remove,
+	.probe  = __probe,
+	.remove = __remove,
 };
 
 int qdmabuf_device_register(void) {
