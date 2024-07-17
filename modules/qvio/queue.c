@@ -508,13 +508,12 @@ static int __stream_main(void * data) {
 			reg = xdev->bar[xdev->user_bar_idx] + 0x00D0;
 			w = ioread32(reg);
 
-#if defined(BUILD_SC0710) && BUILD_SC0710
-			w |= 0x00000001; // streamon
-#endif // BUILD_SC0710
-
-#if defined(BUILD_SC0750) && BUILD_SC0750
-			w |= 0x00000010; // streamon
-#endif // BUILD_SC0750
+			if((qdev->pci_dev->subsystem_vendor == 0xf715 && qdev->pci_dev->subsystem_device == 0x0002) ||
+				(qdev->pci_dev->subsystem_vendor == 0xf757 && qdev->pci_dev->subsystem_device == 0x0001)) {
+				w |= 0x00000001; // streamon
+			} else if((qdev->pci_dev->subsystem_vendor == 0xf757 && qdev->pci_dev->subsystem_device == 0x0601)) {
+				w |= 0x00000010; // streamon
+			}
 
 			iowrite32(w, reg);
 
@@ -567,40 +566,47 @@ static int __start_streaming(struct vb2_queue *queue, unsigned int count) {
 	reg = xdev->bar[xdev->user_bar_idx] + 0x00D0;
 	w = ioread32(reg);
 
-#if defined(BUILD_SC0710) && BUILD_SC0710
-	switch(self->current_format.fmt.pix.pixelformat) {
-	case V4L2_PIX_FMT_YUYV:
-		w |= 0x00004110;
-		break;
+	if((qdev->pci_dev->subsystem_vendor == 0xf715 && qdev->pci_dev->subsystem_device == 0x0002) ||
+		(qdev->pci_dev->subsystem_vendor == 0xf757 && qdev->pci_dev->subsystem_device == 0x0001)) {
+		switch(self->current_format.fmt.pix.pixelformat) {
+		case V4L2_PIX_FMT_YUYV:
+			w |= 0x00004110;
+			break;
 
-	case V4L2_PIX_FMT_NV12:
-		w |= 0x00004120;
-		break;
+		case V4L2_PIX_FMT_NV12:
+			w |= 0x00004120;
+			break;
 
-	case V4L2_PIX_FMT_M420:
-		w |= 0x00004120;
-		break;
+		case V4L2_PIX_FMT_M420:
+			w |= 0x00004120;
+			break;
 
-	default:
-		pr_err("unexpected, self->current_format.fmt.pix.pixelformat=0x%X\n", (int)self->current_format.fmt.pix.pixelformat);
-		break;
+		default:
+			pr_err("unexpected, self->current_format.fmt.pix.pixelformat=0x%X\n", (int)self->current_format.fmt.pix.pixelformat);
+			break;
+		}
+
+		w &= ~0x00000001; // streamoff
+	} else if((qdev->pci_dev->subsystem_vendor == 0xf757 && qdev->pci_dev->subsystem_device == 0x0601)) {
+		switch(self->current_format.fmt.pix.pixelformat) {
+		case V4L2_PIX_FMT_YUYV:
+			w |= 0x00084110;
+			break;
+
+		case V4L2_PIX_FMT_NV12:
+			w |= 0x00084120;
+			break;
+
+		case V4L2_PIX_FMT_M420:
+			w |= 0x00084120;
+			break;
+
+		default:
+			pr_err("unexpected, self->current_format.fmt.pix.pixelformat=0x%X\n", (int)self->current_format.fmt.pix.pixelformat);
+			break;
+		}
+		w &= ~0x00000010; // streamoff
 	}
-
-	w &= ~0x00000001; // streamoff
-#endif // BUILD_SC0710
-
-#if defined(BUILD_SC0750) && BUILD_SC0750
-	switch(self->current_format.fmt.pix.pixelformat) {
-	case V4L2_PIX_FMT_YUYV:
-		w |= 0x00080000;
-		break;
-
-	default:
-		pr_err("unexpected, self->current_format.fmt.pix.pixelformat=0x%X\n", (int)self->current_format.fmt.pix.pixelformat);
-		break;
-	}
-	w &= ~0x00000010; // streamoff
-#endif // BUILD_SC0750
 
 	iowrite32(w, reg);
 
@@ -641,13 +647,12 @@ static void __stop_streaming(struct vb2_queue *queue) {
 	reg = xdev->bar[xdev->user_bar_idx] + 0x00D0;
 	w = ioread32(reg);
 
-#if defined(BUILD_SC0710) && BUILD_SC0710
-	w &= ~0x00000001; // streamoff
-#endif // BUILD_SC0710
-
-#if defined(BUILD_SC0750) && BUILD_SC0750
-	w &= ~0x00000010; // streamoff
-#endif // BUILD_SC0750
+	if((qdev->pci_dev->subsystem_vendor == 0xf715 && qdev->pci_dev->subsystem_device == 0x0002) ||
+		(qdev->pci_dev->subsystem_vendor == 0xf757 && qdev->pci_dev->subsystem_device == 0x0001)) {
+		w &= ~0x00000001; // streamoff
+	} else if((qdev->pci_dev->subsystem_vendor == 0xf757 && qdev->pci_dev->subsystem_device == 0x0601)) {
+		w &= ~0x00000010; // streamoff
+	}
 
 	iowrite32(w, reg);
 #endif // USE_LIBXDMA

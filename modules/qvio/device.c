@@ -28,7 +28,7 @@ struct qvio_device* qvio_device_get(struct qvio_device* self) {
 	return self;
 }
 
-static void __free(struct kref *ref)
+static void __s_free(struct kref *ref)
 {
 	struct qvio_device* self = container_of(ref, struct qvio_device, ref);
 
@@ -39,7 +39,7 @@ static void __free(struct kref *ref)
 
 void qvio_device_put(struct qvio_device* self) {
 	if (self)
-		kref_put(&self->ref, __free);
+		kref_put(&self->ref, __s_free);
 }
 
 int qvio_device_xdma_open(struct qvio_device* self, const char* mod_name) {

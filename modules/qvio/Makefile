@@ -22,18 +22,6 @@ ccflags-y += \
 -O3 \
 -DQVIO_MODULE_VERSION=\"$(MODULE_VERSION)\"
 
-ifeq (${BUILD_SC0710},ON)
-ccflags-y += \
--DBUILD_SC0710=1
-$(info BUILD_SC0710)
-endif
-
-ifeq (${BUILD_SC0750},ON)
-ccflags-y += \
--DBUILD_SC0750=1
-$(info BUILD_SC0750)
-endif
-
 # ccflags-y += -D__LIBXDMA_DEBUG__
 
 all:

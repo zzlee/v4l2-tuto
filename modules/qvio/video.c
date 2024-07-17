@@ -30,7 +30,7 @@ struct qvio_video* qvio_video_get(struct qvio_video* self) {
 	return self;
 }
 
-static void __free(struct kref *ref)
+static void __s_free(struct kref *ref)
 {
 	struct qvio_video* self = container_of(ref, struct qvio_video, ref);
 
@@ -42,7 +42,7 @@ static void __free(struct kref *ref)
 
 void qvio_video_put(struct qvio_video* self) {
 	if (self)
-		kref_put(&self->ref, __free);
+		kref_put(&self->ref, __s_free);
 }
 
 static const struct v4l2_file_operations qvio_video_fops = {

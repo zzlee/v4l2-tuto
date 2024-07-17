@@ -186,7 +186,8 @@ static int __pci_probe(struct pci_dev *pdev, const struct pci_device_id *id) {
 	int err = 0;
 	struct qvio_device* self;
 
-	pr_info("\n");
+	pr_info("%04X:%04X (%04X:%04X)\n", (int)pdev->vendor, (int)pdev->device,
+		(int)pdev->subsystem_vendor, (int)pdev->subsystem_device);
 
 	self = qvio_device_new();
 	if(! self) {
@@ -236,13 +237,11 @@ static int __pci_probe(struct pci_dev *pdev, const struct pci_device_id *id) {
 	}
 	snprintf(self->video[0]->v4l2_dev.name, sizeof(self->video[0]->v4l2_dev.name), "qvio-rx");
 
-#if defined(BUILD_SC0710) && BUILD_SC0710
-	self->video[0]->channel = 0;
-#endif // BUILD_SC0710
-
-#if defined(BUILD_SC0750) && BUILD_SC0750
-	self->video[0]->channel = 0;
-#endif // BUILD_SC0750
+	if((self->pci_dev->subsystem_vendor == 0xf715 && self->pci_dev->subsystem_device == 0x0002) ||
+		(self->pci_dev->subsystem_vendor == 0xf757 && self->pci_dev->subsystem_device == 0x0001)) {
+		self->video[0]->channel = 0;
+	}
+	pr_info("self->video[0]->channel=%d\n", self->video[0]->channel);
 
 	err = qvio_video_start(self->video[0]);
 	if(err) {
