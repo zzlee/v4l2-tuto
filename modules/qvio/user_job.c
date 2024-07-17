@@ -189,9 +189,9 @@ static long __file_ioctl_compat(struct file *filep, unsigned int cmd,
 #endif
 
 static const struct file_operations __fileops = {
+	.owner = THIS_MODULE,
 	.release = __file_release,
 	.poll = __file_poll,
-	.owner = THIS_MODULE,
 	.llseek = noop_llseek,
 	.unlocked_ioctl = __file_ioctl,
 #ifdef CONFIG_COMPAT

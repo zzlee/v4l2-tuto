@@ -3,12 +3,15 @@
 
 #include "queue.h"
 #include "user_job.h"
+#include "device.h"
 
 #include <media/v4l2-device.h>
 #include <linux/videodev2.h>
 
 struct qvio_video {
 	struct kref ref;
+
+	struct qvio_device* qdev;
 
 	// v4l2
 	struct qvio_queue queue;
@@ -29,8 +32,7 @@ struct qvio_video {
 	struct qvio_user_job_ctrl user_job_ctrl;
 
 	// xdma
-	struct xdma_dev *xdev;
-	int bar_idx;
+	int channel;
 };
 
 struct qvio_video* qvio_video_new(void);

@@ -1,7 +1,6 @@
 #define pr_fmt(fmt)     "[" KBUILD_MODNAME "]%s(#%d): " fmt, __func__, __LINE__
 
 #include "video.h"
-#include "device.h"
 #include "ioctl.h"
 #include "user_job.h"
 
@@ -149,7 +148,7 @@ int qvio_video_start(struct qvio_video* self) {
 	self->current_parm.parm.capture.timeperframe.numerator = 60;
 	self->current_parm.parm.capture.timeperframe.denominator = 1;
 
-	snprintf(self->vdev->name, 32, "%s", self->v4l2_dev.name);
+	snprintf(self->vdev->name, sizeof(self->vdev->name), "%s", self->v4l2_dev.name);
 	self->vdev->v4l2_dev = &self->v4l2_dev;
 	self->vdev->vfl_dir = self->vfl_dir;
 	self->vdev->fops = &qvio_video_fops;
@@ -212,6 +211,11 @@ int qvio_video_s_fmt(struct qvio_video* self, struct v4l2_format *format) {
 			format->fmt.pix.sizeimage = format->fmt.pix.bytesperline * ALIGN(format->fmt.pix.height, self->valign) * 3 / 2;
 			break;
 
+		case V4L2_PIX_FMT_M420:
+			format->fmt.pix.bytesperline = ALIGN(format->fmt.pix.width, self->halign);
+			format->fmt.pix.sizeimage = format->fmt.pix.bytesperline * ALIGN(format->fmt.pix.height * 3 / 2, self->valign);
+			break;
+
 		default:
 			pr_err("invalid value, format->fmt.pix.pixelformat=%d", (int)format->fmt.pix.pixelformat);
 			err = -EINVAL;
@@ -246,6 +250,13 @@ int qvio_video_s_fmt(struct qvio_video* self, struct v4l2_format *format) {
 			format->fmt.pix_mp.plane_fmt[1].bytesperline = format->fmt.pix_mp.plane_fmt[0].bytesperline;
 			format->fmt.pix_mp.plane_fmt[1].sizeimage =
 				format->fmt.pix_mp.plane_fmt[1].bytesperline * ALIGN(format->fmt.pix_mp.height, self->valign) / 2;
+			break;
+
+		case V4L2_PIX_FMT_M420:
+			format->fmt.pix_mp.num_planes = 1;
+			format->fmt.pix_mp.plane_fmt[0].bytesperline = ALIGN(format->fmt.pix_mp.width, self->halign);
+			format->fmt.pix_mp.plane_fmt[0].sizeimage =
+				format->fmt.pix_mp.plane_fmt[0].bytesperline * ALIGN(format->fmt.pix_mp.height * 3 / 2, self->valign);
 			break;
 
 		default:
@@ -312,15 +323,22 @@ int qvio_video_enum_fmt(struct qvio_video* self, struct v4l2_fmtdesc *format) {
 	switch(format->index) {
 	case 0:
 		format->flags = 0;
-		snprintf((char *) format->description, 32, "YUYV");
+		snprintf((char *) format->description, sizeof(format->description), "YUYV");
 		format->pixelformat = V4L2_PIX_FMT_YUYV;
 		format->mbus_code = 0;
 		break;
 
 	case 1:
 		format->flags = 0;
-		snprintf((char *) format->description, 32, "NV12");
+		snprintf((char *) format->description, sizeof(format->description), "NV12");
 		format->pixelformat = V4L2_PIX_FMT_NV12;
+		format->mbus_code = 0;
+		break;
+
+	case 2:
+		format->flags = 0;
+		snprintf((char *) format->description, sizeof(format->description), "M420");
+		format->pixelformat = V4L2_PIX_FMT_M420;
 		format->mbus_code = 0;
 		break;
 
@@ -369,6 +387,7 @@ int qvio_video_try_fmt(struct qvio_video* self, struct v4l2_format *format) {
 		switch(format->fmt.pix.pixelformat) {
 		case V4L2_PIX_FMT_YUYV:
 		case V4L2_PIX_FMT_NV12:
+		case V4L2_PIX_FMT_M420:
 			break;
 
 		default:
@@ -385,6 +404,7 @@ int qvio_video_try_fmt(struct qvio_video* self, struct v4l2_format *format) {
 		switch(format->fmt.pix_mp.pixelformat) {
 		case V4L2_PIX_FMT_YUYV:
 		case V4L2_PIX_FMT_NV12:
+		case V4L2_PIX_FMT_M420:
 			break;
 
 		default:
@@ -426,7 +446,7 @@ int qvio_video_enum_input(struct qvio_video* self, struct v4l2_input *input) {
 
 	switch(input->index) {
 	case 0:
-		snprintf((char *) input->name, 32, "qvio-input");
+		snprintf((char *) input->name, sizeof(input->name), "qvio-input");
 		input->type = V4L2_INPUT_TYPE_CAMERA;
 		input->audioset = 0;
 		input->tuner = 0;
@@ -519,7 +539,7 @@ int qvio_video_enum_output(struct qvio_video* self, struct v4l2_output *output) 
 
 	switch(output->index) {
 	case 0:
-		snprintf((char *) output->name, 32, "qvio-output");
+		snprintf((char *) output->name, sizeof(output->name), "qvio-output");
 		output->type = V4L2_OUTPUT_TYPE_ANALOG;
 		output->audioset = 0;
 		output->modulator = 0;
@@ -647,6 +667,7 @@ int qvio_video_enum_framesizes(struct qvio_video* self, struct v4l2_frmsizeenum 
 		switch(frame_sizes->pixel_format) {
 		case V4L2_PIX_FMT_YUYV:
 		case V4L2_PIX_FMT_NV12:
+		case V4L2_PIX_FMT_M420:
 			frame_sizes->type = V4L2_FRMSIZE_TYPE_STEPWISE;
 			frame_sizes->stepwise.min_width = 64;
 			frame_sizes->stepwise.max_width = 4096;
@@ -691,6 +712,7 @@ int qvio_video_enum_frameintervals(struct qvio_video* self, struct v4l2_frmivale
 		switch(frame_intervals->pixel_format) {
 		case V4L2_PIX_FMT_YUYV:
 		case V4L2_PIX_FMT_NV12:
+		case V4L2_PIX_FMT_M420:
 			frame_intervals->type = V4L2_FRMIVAL_TYPE_DISCRETE;
 			frame_intervals->discrete.numerator = 1;
 			frame_intervals->discrete.denominator = 60;

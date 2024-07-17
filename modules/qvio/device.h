@@ -5,9 +5,9 @@
 
 #include <linux/platform_device.h>
 #include <linux/pci.h>
+#include <linux/cdev.h>
 
 #include "libxdma.h"
-#include "xdma_thread.h"
 
 #define QVIO_PCI_DRIVER_NAME QVIO_DRIVER_NAME "-pci"
 #define QVIO_MAX_VIDEO 32
@@ -25,10 +25,13 @@ struct qvio_device {
 	const struct file_operations* cdev_fops;
 
 	// xdma
-	struct xdma_dev *xdev;
 	int user_max;
 	int c2h_channel_max;
 	int h2c_channel_max;
+
+#if 1 // USE_LIBXDMA
+	struct xdma_dev *xdev;
+#endif // USE_LIBXDMA
 
 	struct qvio_video* video[QVIO_MAX_VIDEO];
 };
@@ -36,5 +39,10 @@ struct qvio_device {
 struct qvio_device* qvio_device_new(void);
 struct qvio_device* qvio_device_get(struct qvio_device* self);
 void qvio_device_put(struct qvio_device* self);
+
+int qvio_device_xdma_open(struct qvio_device* self, const char* mod_name);
+void qvio_device_xdma_close(struct qvio_device* self);
+void qvio_device_xdma_online(struct qvio_device* self, struct pci_dev *pdev);
+void qvio_device_xdma_offline(struct qvio_device* self, struct pci_dev *pdev);
 
 #endif // __QVIO_DEVICE_H__

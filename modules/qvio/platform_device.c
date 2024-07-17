@@ -72,6 +72,7 @@ static int __probe(struct platform_device *pdev) {
 		goto err1;
 	}
 
+	self->video[0]->qdev = self;
 	self->video[0]->user_job_ctrl.enable = true;
 
 	self->video[0]->vfl_dir = VFL_DIR_RX;

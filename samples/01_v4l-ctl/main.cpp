@@ -89,7 +89,7 @@ namespace __01_v4l_ctl__ {
 			nVidFd = -1;
 			nMemory = V4L2_MEMORY_MMAP;
 			nBufType = V4L2_BUF_TYPE_VIDEO_CAPTURE;
-			nPixelFormat = V4L2_PIX_FMT_YUYV;
+			nPixelFormat = V4L2_PIX_FMT_M420;
 			nWidth = 1920;
 			nHeight = 1080;
 			nHAlign = ZZ_ALIGN(nWidth, 0x40);

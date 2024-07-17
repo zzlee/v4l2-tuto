@@ -4,9 +4,6 @@
 #include "device.h"
 #include "cdev.h"
 
-#include "libxdma_api.h"
-#include "libxdma.h"
-
 #include <linux/aer.h>
 
 #define DRV_MODULE_NAME "qvio-pci"
@@ -162,11 +159,11 @@ static long __file_ioctl(struct file *filp, unsigned int cmd, unsigned long arg)
 
 	switch (cmd) {
 	case QVID_IOC_IOCOFFLINE:
-		xdma_device_offline(xdev->pdev, xdev);
+		qvio_device_xdma_offline(self, xdev->pdev);
 		break;
 
 	case QVID_IOC_IOCONLINE:
-		xdma_device_online(xdev->pdev, xdev);
+		qvio_device_xdma_online(self, xdev->pdev);
 		break;
 
 	default:
@@ -188,8 +185,6 @@ static const struct file_operations __fops = {
 static int __pci_probe(struct pci_dev *pdev, const struct pci_device_id *id) {
 	int err = 0;
 	struct qvio_device* self;
-	struct xdma_dev *xdev;
-	void *hndl;
 
 	pr_info("\n");
 
@@ -208,65 +203,11 @@ static int __pci_probe(struct pci_dev *pdev, const struct pci_device_id *id) {
 	self->h2c_channel_max = XDMA_CHANNEL_NUM_MAX;
 	self->c2h_channel_max = XDMA_CHANNEL_NUM_MAX;
 
-	hndl = xdma_device_open(DRV_MODULE_NAME, pdev, &self->user_max,
-		&self->h2c_channel_max, &self->c2h_channel_max);
-	if (!hndl) {
-		pr_err("xdma_device_open() failed\n");
-		err = -EINVAL;
+	err = qvio_device_xdma_open(self, DRV_MODULE_NAME);
+	if (err) {
+		pr_err("qvio_device_xdma_open() failed, err=%d\n", err);
 		goto err1;
 	}
-
-	if (self->user_max > MAX_USER_IRQ) {
-		pr_err("Maximum users limit reached\n");
-		err = -EINVAL;
-		goto err2;
-	}
-
-	if (self->h2c_channel_max > XDMA_CHANNEL_NUM_MAX) {
-		pr_err("Maximun H2C channel limit reached\n");
-		err = -EINVAL;
-		goto err2;
-	}
-
-	if (self->c2h_channel_max > XDMA_CHANNEL_NUM_MAX) {
-		pr_err("Maximun C2H channel limit reached\n");
-		err = -EINVAL;
-		goto err2;
-	}
-
-	if (!self->h2c_channel_max && !self->c2h_channel_max)
-		pr_warn("NO engine found!\n");
-
-	if (self->user_max) {
-		u32 mask = (1 << (self->user_max + 1)) - 1;
-
-		err = xdma_user_isr_enable(hndl, mask);
-		if (err) {
-			pr_err("xdma_user_isr_enable() failed, err=%d\n", err);
-			goto err2;
-		}
-	}
-
-	/* make sure no duplicate */
-	xdev = xdev_find_by_pdev(pdev);
-	if (!xdev) {
-		pr_warn("NO xdev found!\n");
-		err = -EINVAL;
-		goto err2;
-	}
-
-	if (hndl != xdev) {
-		pr_err("xdev handle mismatch\n");
-		err = -EINVAL;
-		goto err2;
-	}
-
-	pr_info("%s xdma%d, pdev 0x%p, xdev 0x%p, usr %d, ch %d,%d.\n",
-		dev_name(&pdev->dev), xdev->idx, pdev, xdev,
-		self->user_max, self->h2c_channel_max,
-		self->c2h_channel_max);
-
-	self->xdev = hndl;
 
 	self->cdev_fops = &__fops;
 	err = qvio_cdev_start(self);
@@ -282,6 +223,7 @@ static int __pci_probe(struct pci_dev *pdev, const struct pci_device_id *id) {
 		goto err3;
 	}
 
+	self->video[0]->qdev = self;
 	self->video[0]->user_job_ctrl.enable = false;
 
 	self->video[0]->vfl_dir = VFL_DIR_RX;
@@ -292,13 +234,15 @@ static int __pci_probe(struct pci_dev *pdev, const struct pci_device_id *id) {
 		pr_err("out of space, err=%d\n", err);
 		self->video[0]->bus_info[sizeof(self->video[0]->bus_info) - 1] = '\0';
 	}
-	snprintf(self->video[0]->v4l2_dev.name, V4L2_DEVICE_NAME_SIZE, "qvio-rx");
-	self->video[0]->queue.dev = self->dev;
-	self->video[0]->queue.xdev = self->xdev;
-	self->video[0]->queue.channel = 0;
+	snprintf(self->video[0]->v4l2_dev.name, sizeof(self->video[0]->v4l2_dev.name), "qvio-rx");
 
-	self->video[0]->xdev = self->xdev;
-	self->video[0]->bar_idx = self->xdev->user_bar_idx;
+#if defined(BUILD_SC0710) && BUILD_SC0710
+	self->video[0]->channel = 0;
+#endif // BUILD_SC0710
+
+#if defined(BUILD_SC0750) && BUILD_SC0750
+	self->video[0]->channel = 0;
+#endif // BUILD_SC0750
 
 	err = qvio_video_start(self->video[0]);
 	if(err) {
@@ -313,7 +257,7 @@ err4:
 err3:
 	qvio_cdev_stop(self);
 err2:
-	xdma_device_close(self->pci_dev, self->xdev);
+	qvio_device_xdma_close(self);
 err1:
 	qvio_device_put(self);
 err0:
@@ -331,7 +275,7 @@ static void __pci_remove(struct pci_dev *pdev) {
 	qvio_video_stop(self->video[0]);
 	qvio_video_put(self->video[0]);
 	qvio_cdev_stop(self);
-	xdma_device_close(self->pci_dev, self->xdev);
+	qvio_device_xdma_close(self);
 	qvio_device_put(self);
 	dev_set_drvdata(&pdev->dev, NULL);
 }
@@ -346,7 +290,7 @@ static pci_ers_result_t __pci_error_detected(struct pci_dev *pdev, pci_channel_s
 	case pci_channel_io_frozen:
 		pr_warn("dev 0x%p,0x%p, frozen state error, reset controller\n",
 			pdev, self);
-		xdma_device_offline(pdev, self->xdev);
+		qvio_device_xdma_offline(self, pdev);
 		pci_disable_device(pdev);
 		return PCI_ERS_RESULT_NEED_RESET;
 	case pci_channel_io_perm_failure:
@@ -370,7 +314,7 @@ static pci_ers_result_t __pci_slot_reset(struct pci_dev *pdev)
 	pci_set_master(pdev);
 	pci_restore_state(pdev);
 	pci_save_state(pdev);
-	xdma_device_online(pdev, self->xdev);
+	qvio_device_xdma_online(self, pdev);
 
 	return PCI_ERS_RESULT_RECOVERED;
 }
@@ -394,7 +338,7 @@ static void __pci_reset_prepare(struct pci_dev *pdev)
 	struct qvio_device* self = dev_get_drvdata(&pdev->dev);
 
 	pr_info("dev 0x%p,0x%p.\n", pdev, self);
-	xdma_device_offline(pdev, self->xdev);
+	qvio_device_xdma_offline(self, pdev);
 }
 
 static void __pci_reset_done(struct pci_dev *pdev)
@@ -402,7 +346,7 @@ static void __pci_reset_done(struct pci_dev *pdev)
 	struct qvio_device* self = dev_get_drvdata(&pdev->dev);
 
 	pr_info("dev 0x%p,0x%p.\n", pdev, self);
-	xdma_device_online(pdev, self->xdev);
+	qvio_device_xdma_online(self, pdev);
 }
 
 #elif KERNEL_VERSION(3, 16, 0) <= LINUX_VERSION_CODE
@@ -413,9 +357,9 @@ static void __pci_reset_notify(struct pci_dev *pdev, bool prepare)
 	pr_info("dev 0x%p,0x%p, prepare %d.\n", pdev, self, prepare);
 
 	if (prepare)
-		xdma_device_offline(pdev, self->xdev);
+		qvio_device_xdma_offline(self, pdev);
 	else
-		xdma_device_online(pdev, self->xdev);
+		qvio_device_xdma_online(self, pdev);
 }
 #endif
 

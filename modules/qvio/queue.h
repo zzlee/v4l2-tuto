@@ -6,7 +6,6 @@
 #include <linux/sched.h>
 
 struct qvio_queue {
-	struct device* dev;
 	struct vb2_queue queue;
 	struct mutex queue_mutex;
 	struct list_head buffers;
@@ -15,9 +14,7 @@ struct qvio_queue {
 	__u32 sequence;
 	int halign, valign;
 
-	// xdma
-	struct xdma_dev *xdev;
-	int channel;
+	// kthread for data pull
 	struct task_struct* task;
 };
 
