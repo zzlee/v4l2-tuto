@@ -10,7 +10,7 @@
 
 #define DRV_MODULE_DESC		"QCAP Video I/O Driver"
 
-static char version[] = DRV_MODULE_DESC " v" DRV_MODULE_VERSION "\n";
+static char version[] = DRV_MODULE_DESC " v" DRV_MODULE_VERSION;
 
 MODULE_AUTHOR("ZzLab");
 MODULE_DESCRIPTION(DRV_MODULE_DESC);
@@ -21,7 +21,7 @@ static int __init qvio_mod_init(void)
 {
 	int err;
 
-	pr_info("%s", version);
+	pr_info("%s\n", version);
 
 	err = qvio_cdev_register();
 	if (err != 0) {
@@ -57,7 +57,7 @@ err0:
 
 static void __exit qvio_mod_exit(void)
 {
-	pr_info("%s", version);
+	pr_info("%s\n", version);
 
 	qvio_device_pci_unregister();
 

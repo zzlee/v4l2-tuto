@@ -57,6 +57,7 @@ static int __probe(struct platform_device *pdev) {
 	self->dev = &pdev->dev;
 	self->pdev = pdev;
 	platform_set_drvdata(pdev, self);
+	self->device_id = 0xCAFE0001;
 
 	self->cdev_fops = &__fops;
 	err = qvio_cdev_start(self);

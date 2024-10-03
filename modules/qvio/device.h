@@ -18,6 +18,7 @@ struct qvio_device {
 	struct device *dev;
 	struct platform_device *pdev;
 	struct pci_dev *pci_dev;
+	uint32_t device_id;
 
 	// cdev
 	dev_t cdevno;

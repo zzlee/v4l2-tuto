@@ -29,16 +29,24 @@ static int __file_open(struct inode *inode, struct file *filp) {
 static ssize_t __file_read(struct file *filp, char __user *buf, size_t count, loff_t *pos)
 {
 	struct qvio_device* self = filp->private_data;
+
+#if 1 // USE_LIBXDMA
 	struct xdma_dev *xdev;
 	void __iomem *reg;
 	u32 w;
+#endif // USE_LIBXDMA
+
 	int rv;
 
+#if 1 // USE_LIBXDMA
 	xdev = self->xdev;
+#endif // USE_LIBXDMA
 
 	/* only 32-bit aligned and 32-bit multiples */
 	if (*pos & 3)
 		return -EPROTO;
+
+#if 1 // USE_LIBXDMA
 	/* first address is BAR base plus file position offset */
 	reg = xdev->bar[xdev->user_bar_idx] + *pos;
 	//w = read_register(reg);
@@ -48,6 +56,7 @@ static ssize_t __file_read(struct file *filp, char __user *buf, size_t count, lo
 	rv = copy_to_user(buf, &w, 4);
 	if (rv)
 		dbg_sg("Copy to userspace failed but continuing\n");
+#endif // USE_LIBXDMA
 
 	*pos += 4;
 	return 4;
@@ -56,17 +65,24 @@ static ssize_t __file_read(struct file *filp, char __user *buf, size_t count, lo
 static ssize_t __file_write(struct file *filp, const char __user *buf, size_t count, loff_t *pos)
 {
 	struct qvio_device* self = filp->private_data;
+
+#if 1 // USE_LIBXDMA
 	struct xdma_dev *xdev;
 	void __iomem *reg;
 	u32 w;
+#endif // USE_LIBXDMA
+
 	int rv;
 
+#if 1 // USE_LIBXDMA
 	xdev = self->xdev;
+#endif // USE_LIBXDMA
 
 	/* only 32-bit aligned and 32-bit multiples */
 	if (*pos & 3)
 		return -EPROTO;
 
+#if 1 // USE_LIBXDMA
 	/* first address is BAR base plus file position offset */
 	reg = xdev->bar[xdev->user_bar_idx] + *pos;
 	rv = copy_from_user(&w, buf, 4);
@@ -77,6 +93,8 @@ static ssize_t __file_write(struct file *filp, const char __user *buf, size_t co
 			__func__, w, reg, (long)count, (int)*pos);
 	//write_register(w, reg);
 	iowrite32(w, reg);
+#endif // USE_LIBXDMA
+
 	*pos += 4;
 	return 4;
 }
@@ -85,16 +103,24 @@ static ssize_t __file_write(struct file *filp, const char __user *buf, size_t co
 static int __file_mmap(struct file *filp, struct vm_area_struct *vma)
 {
 	struct qvio_device* self = filp->private_data;
+
+#if 1 // USE_LIBXDMA
 	struct xdma_dev *xdev;
+#endif // USE_LIBXDMA
+
 	unsigned long off;
 	unsigned long phys;
 	unsigned long vsize;
 	unsigned long psize;
 	int rv;
 
+#if 1 // USE_LIBXDMA
 	xdev = self->xdev;
+#endif // USE_LIBXDMA
 
 	off = vma->vm_pgoff << PAGE_SHIFT;
+
+#if 1 // USE_LIBXDMA
 	/* BAR physical address */
 	phys = pci_resource_start(xdev->pdev, xdev->user_bar_idx) + off;
 	vsize = vma->vm_end - vma->vm_start;
@@ -109,6 +135,8 @@ static int __file_mmap(struct file *filp, struct vm_area_struct *vma)
 	pr_info("start = 0x%llx\n",
 		(unsigned long long)pci_resource_start(xdev->pdev,
 		xdev->user_bar_idx));
+#endif // USE_LIBXDMA
+
 	pr_info("phys = 0x%lx\n", phys);
 
 	if (vsize > psize)
@@ -142,6 +170,8 @@ static int __file_mmap(struct file *filp, struct vm_area_struct *vma)
 static long __file_ioctl(struct file *filp, unsigned int cmd, unsigned long arg)
 {
 	struct qvio_device* self = filp->private_data;
+
+#if 1 // USE_LIBXDMA
 	struct xdma_dev *xdev;
 
 	xdev = self->xdev;
@@ -150,6 +180,7 @@ static long __file_ioctl(struct file *filp, unsigned int cmd, unsigned long arg)
 		return -EINVAL;
 	}
 	pr_info("cmd 0x%x, xdev 0x%p, pdev 0x%p.\n", cmd, xdev, xdev->pdev);
+#endif // USE_LIBXDMA
 
 	if (_IOC_TYPE(cmd) != QVID_IOC_MAGIC) {
 		pr_err("cmd %u, bad magic 0x%x/0x%x.\n",
@@ -157,6 +188,7 @@ static long __file_ioctl(struct file *filp, unsigned int cmd, unsigned long arg)
 		return -ENOTTY;
 	}
 
+#if 1 // USE_LIBXDMA
 	switch (cmd) {
 	case QVID_IOC_IOCOFFLINE:
 		qvio_device_xdma_offline(self, xdev->pdev);
@@ -170,6 +202,8 @@ static long __file_ioctl(struct file *filp, unsigned int cmd, unsigned long arg)
 		pr_err("UNKNOWN ioctl cmd 0x%x.\n", cmd);
 		return -ENOTTY;
 	}
+#endif // USE_LIBXDMA
+
 	return 0;
 }
 
@@ -199,6 +233,10 @@ static int __pci_probe(struct pci_dev *pdev, const struct pci_device_id *id) {
 	self->dev = &pdev->dev;
 	self->pci_dev = pdev;
 	dev_set_drvdata(&pdev->dev, self);
+	self->device_id = (((int)pdev->subsystem_vendor & 0xFFFF) << 16) |
+		((int)pdev->subsystem_device & 0xFFFF);
+
+	pr_info("self->device_id=%08X\n", self->device_id);
 
 	self->user_max = MAX_USER_IRQ;
 	self->h2c_channel_max = XDMA_CHANNEL_NUM_MAX;
@@ -237,10 +275,22 @@ static int __pci_probe(struct pci_dev *pdev, const struct pci_device_id *id) {
 	}
 	snprintf(self->video[0]->v4l2_dev.name, sizeof(self->video[0]->v4l2_dev.name), "qvio-rx");
 
-	if((self->pci_dev->subsystem_vendor == 0xf715 && self->pci_dev->subsystem_device == 0x0002) ||
-		(self->pci_dev->subsystem_vendor == 0xf757 && self->pci_dev->subsystem_device == 0x0001)) {
+	switch(self->device_id) {
+	case 0xF7150002:
+	case 0xF7570001:
 		self->video[0]->channel = 0;
+		break;
+
+	case 0xF7570601:
+		self->video[0]->channel = 0;
+		break;
+
+	default:
+		pr_err("unexpected value, self->device_id=0x%08X\n", self->device_id);
+		goto err4;
+		break;
 	}
+
 	pr_info("self->video[0]->channel=%d\n", self->video[0]->channel);
 
 	err = qvio_video_start(self->video[0]);

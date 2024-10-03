@@ -491,7 +491,7 @@ struct xdma_request_cb {
 
 	unsigned int sw_desc_idx;
 	unsigned int sw_desc_cnt;
-	struct sw_desc sdesc[0];
+	struct sw_desc sdesc[];
 };
 
 #if 0 // NONEED
@@ -722,4 +722,11 @@ ssize_t xdma_xfer_aperture(struct xdma_engine *engine, bool write, u64 ep_addr,
 			unsigned int aperture, struct sg_table *sgt,
 			bool dma_mapped, int timeout_ms);
 #endif // NONEED
+
+struct xdma_request_cb *xdma_init_request(struct sg_table *sgt,
+						 u64 ep_addr);
+void xdma_request_free(struct xdma_request_cb *req);
+ssize_t xdma_xfer_submit1(void *dev_hndl, int channel, bool write,
+	struct xdma_request_cb *req, int timeout_ms);
+
 #endif /* XDMA_LIB_H */

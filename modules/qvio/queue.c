@@ -25,6 +25,8 @@ struct qvio_queue_buffer {
 	// vb2_buffer dma access
 	struct sg_table sgt;
 	enum dma_data_direction dma_dir;
+
+	struct xdma_io_cb io_cb;
 };
 
 void qvio_queue_init(struct qvio_queue* self) {
@@ -194,6 +196,82 @@ static void sgt_dump(struct sg_table *sgt)
 	}
 }
 
+static void __io_done(unsigned long  cb_hndl, int err) {
+	struct xdma_io_cb *cb = (struct xdma_io_cb *)cb_hndl;
+	struct vb2_buffer *buffer = cb->private;
+	struct qvio_queue* self = vb2_get_drv_priv(buffer->vb2_queue);
+	struct qvio_video* video = container_of(self, struct qvio_video, queue);
+	struct vb2_v4l2_buffer *vbuf = to_vb2_v4l2_buffer(buffer);
+	struct qvio_queue_buffer* buf = container_of(vbuf, struct qvio_queue_buffer, vb);
+	struct xdma_dev *xdev = video->qdev->xdev;
+	ssize_t size = 0;
+
+#if 1 // DEBUG
+	pr_info("param: %p %p %d %p, err=%d\n", self, vbuf, vbuf->vb2_buf.index, buf, err);
+#endif
+
+	if (err) {
+		pr_err("err=%d\n", err);
+
+		goto err0;
+	}
+
+	pr_info("++++\n");
+	size = xdma_xfer_completion((void *)cb, xdev,
+		video->channel, cb->write, cb->ep_addr, &buf->sgt, true, 1000);
+	if((int)size < 0) {
+		err = (int)size;
+		pr_warn("xdma_xfer_completion() failed, err=%d", err);
+
+		goto err0;
+	}
+	pr_info("----\n");
+
+	buf->vb.vb2_buf.timestamp = ktime_get_ns();
+	buf->vb.field = V4L2_FIELD_NONE;
+	buf->vb.sequence = self->sequence++;
+
+	vb2_buffer_done(&buf->vb.vb2_buf, VB2_BUF_STATE_DONE);
+
+#if 0
+	err = mutex_lock_interruptible(&self->buffers_mutex);
+	if (err) {
+		pr_err("mutex_lock_interruptible() failed, err=%d\n", err);
+
+		goto err0;
+	}
+
+	if (list_empty(&self->buffers)) {
+		mutex_unlock(&self->buffers_mutex);
+		pr_err("self->buffers is empty\n");
+
+		goto err0;
+	}
+
+	buf = list_entry(self->buffers.next, struct qvio_queue_buffer, list_ready);
+	list_del(&buf->list_ready);
+	mutex_unlock(&self->buffers_mutex);
+
+#if 1 // USE_LIBXDMA
+	size = xdma_xfer_submit_nowait(&buf->io_cb, xdev, video->channel, false, 0, &buf->sgt, true, 100);
+	if((int)size < 0) switch(1) { case 1:
+		err = (int)size;
+		if(err == -EIOCBQUEUED)
+			break;
+
+		pr_err("xdma_xfer_submit_nowait() failed, err=%d", err);
+
+		goto err0;
+	}
+#endif // USE_LIBXDMA
+#endif
+
+	return;
+
+err0:
+	return;
+}
+
 static int __buf_init(struct vb2_buffer *buffer) {
 	int err;
 	struct qvio_queue* self = vb2_get_drv_priv(buffer->vb2_queue);
@@ -210,21 +288,38 @@ static int __buf_init(struct vb2_buffer *buffer) {
 	plane_size = vb2_plane_size(buffer, 0);
 	vaddr = vb2_plane_vaddr(buffer, 0);
 
-#if 1
 	pr_info("plane_size=%d, vaddr=%p\n", (int)plane_size, vaddr);
 
-	buf->dma_dir = DMA_NONE;
-	err = vmalloc_dma_map_sg(video->qdev->dev, vaddr, plane_size, &buf->sgt, DMA_BIDIRECTIONAL);
-	if(err) {
-		pr_err("vmalloc_dma_map_sg() failed, err=%d\n", err);
-		goto err0;
-	}
-	buf->dma_dir = DMA_BIDIRECTIONAL;
+	switch(buffer->memory) {
+#if 1
+	case V4L2_MEMORY_MMAP:
+		buf->dma_dir = DMA_NONE;
+		err = vmalloc_dma_map_sg(video->qdev->dev, vaddr, plane_size, &buf->sgt, DMA_BIDIRECTIONAL);
+		if(err) {
+			pr_err("vmalloc_dma_map_sg() failed, err=%d\n", err);
+			goto err0;
+		}
+		buf->dma_dir = DMA_BIDIRECTIONAL;
 
 #if 1 // DEBUG
-	sgt_dump(&buf->sgt);
+		sgt_dump(&buf->sgt);
 #endif
+
+		memset(&buf->io_cb, 0, sizeof(struct xdma_io_cb));
+		buf->io_cb.ep_addr = 0;
+		buf->io_cb.write = false;
+		buf->io_cb.private = buffer;
+		buf->io_cb.io_done = __io_done;
+
+		break;
 #endif
+
+	default:
+		pr_err("unexpected value, buffer->memory=%d\n", (int)buffer->memory);
+		err = -EINVAL;
+		goto err0;
+		break;
+	}
 
 	return 0;
 
@@ -459,7 +554,6 @@ static void __read_one_frame(struct qvio_queue* self) {
 #endif
 
 	size = xdma_xfer_submit(xdev, video->channel, false, 0, &buf->sgt, true, 0);
-	// pr_info("xdma_xfer_submit(), size=%d\n", (int)size);
 
 	vb2_buffer_done(&buf->vb.vb2_buf, VB2_BUF_STATE_DONE);
 
@@ -474,9 +568,13 @@ static int __stream_main(void * data) {
 	struct qvio_video* video = container_of(self, struct qvio_video, queue);
 	struct qvio_queue_buffer* buf = NULL;
 	struct qvio_device* qdev = video->qdev;
+
+#if 1 // USE_LIBXDMA
 	struct xdma_dev *xdev = qdev->xdev;
 	void __iomem *reg;
 	u32 w;
+#endif // USE_LIBXDMA
+
 	ssize_t size;
 	bool stream_started = false;
 
@@ -504,28 +602,41 @@ static int __stream_main(void * data) {
 			mutex_unlock(&self->buffers_mutex);
 		}
 
+#if 1 // USE_LIBXDMA
 		if(! stream_started) {
-			reg = xdev->bar[xdev->user_bar_idx] + 0x00D0;
-			w = ioread32(reg);
+			switch(qdev->device_id) {
+			case 0xF7150002:
+			case 0xF7570001:
+				reg = xdev->bar[xdev->user_bar_idx] + 0x00D0;
+				w = ioread32(reg);
 
-			if((qdev->pci_dev->subsystem_vendor == 0xf715 && qdev->pci_dev->subsystem_device == 0x0002) ||
-				(qdev->pci_dev->subsystem_vendor == 0xf757 && qdev->pci_dev->subsystem_device == 0x0001)) {
 				w |= 0x00000001; // streamon
-			} else if((qdev->pci_dev->subsystem_vendor == 0xf757 && qdev->pci_dev->subsystem_device == 0x0601)) {
-				w |= 0x00000010; // streamon
-			}
 
-			iowrite32(w, reg);
+				iowrite32(w, reg);
+				break;
+
+			case 0xF7570601:
+				reg = xdev->bar[xdev->user_bar_idx] + 0x00D0;
+				w = ioread32(reg);
+
+				w |= 0x00000010; // streamon
+
+				iowrite32(w, reg);
+				break;
+			}
 
 			stream_started = true;
 		}
 
-		size = xdma_xfer_submit(xdev, video->channel, false, 0, &buf->sgt, true, 1000);
+		// pr_info("++++ xdma_xfer_submit(), size=%d\n", (int)size);
+		size = xdma_xfer_submit(xdev, video->channel, false, 0, &buf->sgt, true, 100);
+		// pr_info("---- xdma_xfer_submit(), size=%d\n", (int)size);
 		if((int)size < 0) {
 			err = (int)size;
 			pr_warn("xdma_xfer_submit() failed, err=%d", err);
 			continue;
 		}
+#endif // USE_LIBXDMA
 
 		buf->vb.vb2_buf.timestamp = ktime_get_ns();
 		buf->vb.field = V4L2_FIELD_NONE;
@@ -548,9 +659,12 @@ static int __stream_main(void * data) {
 #endif // USE_LIBXDMA
 
 static int __start_streaming(struct vb2_queue *queue, unsigned int count) {
+	int err;
 	struct qvio_queue* self = container_of(queue, struct qvio_queue, queue);
 	struct qvio_video* video = container_of(self, struct qvio_video, queue);
 	struct qvio_device* qdev = video->qdev;
+	struct qvio_queue_buffer* buf;
+	ssize_t size;
 
 #if 1 // USE_LIBXDMA
 	struct xdma_dev *xdev = qdev->xdev;
@@ -563,11 +677,12 @@ static int __start_streaming(struct vb2_queue *queue, unsigned int count) {
 	self->sequence = 0;
 
 #if 1 // USE_LIBXDMA
-	reg = xdev->bar[xdev->user_bar_idx] + 0x00D0;
-	w = ioread32(reg);
+	switch(qdev->device_id) {
+	case 0xF7150002:
+	case 0xF7570001:
+		reg = xdev->bar[xdev->user_bar_idx] + 0x00D0;
+		w = ioread32(reg);
 
-	if((qdev->pci_dev->subsystem_vendor == 0xf715 && qdev->pci_dev->subsystem_device == 0x0002) ||
-		(qdev->pci_dev->subsystem_vendor == 0xf757 && qdev->pci_dev->subsystem_device == 0x0001)) {
 		switch(self->current_format.fmt.pix.pixelformat) {
 		case V4L2_PIX_FMT_YUYV:
 			w |= 0x00004110;
@@ -587,18 +702,23 @@ static int __start_streaming(struct vb2_queue *queue, unsigned int count) {
 		}
 
 		w &= ~0x00000001; // streamoff
-	} else if((qdev->pci_dev->subsystem_vendor == 0xf757 && qdev->pci_dev->subsystem_device == 0x0601)) {
+		break;
+
+	case 0xF7570601:
+		reg = xdev->bar[xdev->user_bar_idx] + 0x00D0;
+		w = ioread32(reg);
+
 		switch(self->current_format.fmt.pix.pixelformat) {
 		case V4L2_PIX_FMT_YUYV:
-			w |= 0x00084110;
+			w |= 0x00084112;
 			break;
 
 		case V4L2_PIX_FMT_NV12:
-			w |= 0x00084120;
+			w |= 0x00084122;
 			break;
 
 		case V4L2_PIX_FMT_M420:
-			w |= 0x00084120;
+			w |= 0x00084122;
 			break;
 
 		default:
@@ -606,10 +726,12 @@ static int __start_streaming(struct vb2_queue *queue, unsigned int count) {
 			break;
 		}
 		w &= ~0x00000010; // streamoff
+
+		iowrite32(w, reg);
+		break;
 	}
 
-	iowrite32(w, reg);
-
+#if 0
 	self->task = kthread_create(__stream_main, self, self->queue.name);
 	if(! self->task) {
 		pr_err("kthread_create() failed\n");
@@ -617,6 +739,66 @@ static int __start_streaming(struct vb2_queue *queue, unsigned int count) {
 	}
 
 	wake_up_process(self->task);
+#else
+	// submit all buffers
+	while(true) {
+		err = mutex_lock_interruptible(&self->buffers_mutex);
+		if (err) {
+			pr_err("mutex_lock_interruptible() failed, err=%d\n", err);
+
+			goto err0;
+		}
+
+		if (list_empty(&self->buffers)) {
+			mutex_unlock(&self->buffers_mutex);
+			break;
+		}
+
+		buf = list_entry(self->buffers.next, struct qvio_queue_buffer, list_ready);
+		list_del(&buf->list_ready);
+		mutex_unlock(&self->buffers_mutex);
+
+#if 1 // USE_LIBXDMA
+		pr_info("++++\n");
+		size = xdma_xfer_submit_nowait(&buf->io_cb, xdev, video->channel, false, 0, &buf->sgt, true, 0);
+		if((int)size < 0) {
+			err = (int)size;
+			if(err == -EIOCBQUEUED)
+				continue;
+
+			pr_err("xdma_xfer_submit_nowait() failed, err=%d", err);
+
+			goto err0;
+		}
+		pr_info("----\n");
+#endif // USE_LIBXDMA
+	}
+
+#if 1 // USE_LIBXDMA
+	switch(qdev->device_id) {
+	case 0xF7150002:
+	case 0xF7570001:
+		reg = xdev->bar[xdev->user_bar_idx] + 0x00D0;
+		w = ioread32(reg);
+
+		w |= 0x00000001; // streamon
+
+		iowrite32(w, reg);
+		break;
+
+	case 0xF7570601:
+		reg = xdev->bar[xdev->user_bar_idx] + 0x00D0;
+		w = ioread32(reg);
+
+		w |= 0x00000010; // streamon
+
+		iowrite32(w, reg);
+		break;
+	}
+#endif // USE_LIBXDMA
+
+#endif
+
 #endif // USE_LIBXDMA
 
 	return 0;
@@ -639,22 +821,34 @@ static void __stop_streaming(struct vb2_queue *queue) {
 	pr_info("\n");
 
 #if 1 // USE_LIBXDMA
+	switch(qdev->device_id) {
+	case 0xF7150002:
+	case 0xF7570001:
+		reg = xdev->bar[xdev->user_bar_idx] + 0x00D0;
+		w = ioread32(reg);
+
+		w &= ~0x00000001; // streamoff
+
+		iowrite32(w, reg);
+		break;
+
+	case 0xF7570601:
+		reg = xdev->bar[xdev->user_bar_idx] + 0x00D0;
+		w = ioread32(reg);
+
+		w &= ~0x00000010; // streamoff
+
+		iowrite32(w, reg);
+		break;
+	}
+
 	if(self->task) {
+		pr_info("++++\n");
 		kthread_stop(self->task);
 		self->task = NULL;
+
+		pr_info("----\n");
 	}
-
-	reg = xdev->bar[xdev->user_bar_idx] + 0x00D0;
-	w = ioread32(reg);
-
-	if((qdev->pci_dev->subsystem_vendor == 0xf715 && qdev->pci_dev->subsystem_device == 0x0002) ||
-		(qdev->pci_dev->subsystem_vendor == 0xf757 && qdev->pci_dev->subsystem_device == 0x0001)) {
-		w &= ~0x00000001; // streamoff
-	} else if((qdev->pci_dev->subsystem_vendor == 0xf757 && qdev->pci_dev->subsystem_device == 0x0601)) {
-		w &= ~0x00000010; // streamoff
-	}
-
-	iowrite32(w, reg);
 #endif // USE_LIBXDMA
 
 	if (!mutex_lock_interruptible(&self->buffers_mutex)) {

@@ -744,6 +744,7 @@ static struct xdma_transfer *engine_start(struct xdma_engine *engine)
 		       (unsigned long)(&engine->sgdma_regs->first_desc_hi) -
 			       (unsigned long)(&engine->sgdma_regs));
 
+#if 1
 	next_adj = xdma_get_next_adj(transfer->desc_adjacent,
 				     cpu_to_le32(PCI_DMA_L(transfer->desc_bus)));
 
@@ -754,6 +755,7 @@ static struct xdma_transfer *engine_start(struct xdma_engine *engine)
 		next_adj, &engine->sgdma_regs->first_desc_adjacent,
 		(unsigned long)(&engine->sgdma_regs->first_desc_adjacent) -
 			(unsigned long)(&engine->sgdma_regs));
+#endif
 
 	dbg_tfr("ioread32(0x%p) (dummy read flushes writes).\n",
 		&engine->regs->status);
@@ -2800,6 +2802,9 @@ static int engine_alloc_resource(struct xdma_engine *engine)
 {
 	struct xdma_dev *xdev = engine->xdev;
 
+	pr_info("engine->desc_max=%d, %d\n",
+		(int)engine->desc_max, (int)sizeof(struct xdma_desc));
+
 	engine->desc = dma_alloc_coherent(&xdev->pdev->dev,
 					  engine->desc_max *
 						  sizeof(struct xdma_desc),
@@ -3029,6 +3034,7 @@ static int transfer_init(struct xdma_engine *engine,
 	engine->desc_idx = (engine->desc_idx + desc_max) % engine->desc_max;
 	engine->desc_used += desc_max;
 
+#if 1
 	/* fill in adjacent numbers */
 	for (i = 0; i < xfer->desc_num; i++) {
 		u32 next_adj = xdma_get_next_adj(xfer->desc_num - i - 1,
@@ -3037,6 +3043,7 @@ static int transfer_init(struct xdma_engine *engine,
 		dbg_desc("set next adj at index %d to %u\n", i, next_adj);
 		xdma_desc_adjacent(xfer->desc_virt + i, next_adj);
 	}
+#endif
 
 	spin_unlock_irqrestore(&engine->lock, flags);
 	return 0;
@@ -3070,7 +3077,7 @@ static void xdma_request_cb_dump(struct xdma_request_cb *req)
 }
 #endif
 
-static void xdma_request_free(struct xdma_request_cb *req)
+void xdma_request_free(struct xdma_request_cb *req)
 {
 	if (((unsigned long)req) >= VMALLOC_START &&
 	    ((unsigned long)req) < VMALLOC_END)
@@ -3099,7 +3106,7 @@ static struct xdma_request_cb *xdma_request_alloc(unsigned int sdesc_nr)
 	return req;
 }
 
-static struct xdma_request_cb *xdma_init_request(struct sg_table *sgt,
+struct xdma_request_cb *xdma_init_request(struct sg_table *sgt,
 						 u64 ep_addr)
 {
 	struct xdma_request_cb *req;
@@ -3678,6 +3685,198 @@ unmap_sgl:
 
 	if (req)
 		xdma_request_free(req);
+
+	/* as long as some data is processed, return the count */
+	return done ? done : rv;
+}
+
+ssize_t xdma_xfer_submit1(void *dev_hndl, int channel, bool write,
+	struct xdma_request_cb *req, int timeout_ms)
+{
+	struct xdma_dev *xdev = (struct xdma_dev *)dev_hndl;
+	struct xdma_engine *engine;
+	int rv = 0, tfer_idx = 0, i;
+	ssize_t done = 0;
+	int nents;
+	enum dma_data_direction dir = write ? DMA_TO_DEVICE : DMA_FROM_DEVICE;
+
+	if (!dev_hndl)
+		return -EINVAL;
+
+	if (debug_check_dev_hndl(__func__, xdev->pdev, dev_hndl) < 0)
+		return -EINVAL;
+
+	if (write == 1) {
+		if (channel >= xdev->h2c_channel_max) {
+			pr_err("H2C channel %d >= %d.\n", channel,
+				xdev->h2c_channel_max);
+			return -EINVAL;
+		}
+		engine = &xdev->engine_h2c[channel];
+	} else if (write == 0) {
+		if (channel >= xdev->c2h_channel_max) {
+			pr_err("C2H channel %d >= %d.\n", channel,
+				xdev->c2h_channel_max);
+			return -EINVAL;
+		}
+		engine = &xdev->engine_c2h[channel];
+	}
+
+	if (!engine) {
+		pr_err("dma engine NULL\n");
+		return -EINVAL;
+	}
+
+	if (engine->magic != MAGIC_ENGINE) {
+		pr_err("%s has invalid magic number %lx\n", engine->name,
+		       engine->magic);
+		return -EINVAL;
+	}
+
+	xdev = engine->xdev;
+	if (xdma_device_flag_check(xdev, XDEV_FLAG_OFFLINE)) {
+		pr_info("xdev 0x%p, offline.\n", xdev);
+		return -EBUSY;
+	}
+
+	/* check the direction */
+	if (engine->dir != dir) {
+		pr_info("0x%p, %s, %d, W %d, 0x%x/0x%x mismatch.\n", engine,
+			engine->name, channel, write, engine->dir, dir);
+		return -EINVAL;
+	}
+
+	dbg_tfr("%s, len %u sg cnt %u.\n", engine->name, req->total_len,
+		req->sw_desc_cnt);
+
+	nents = req->sw_desc_cnt;
+	mutex_lock(&engine->desc_lock);
+
+	while (nents) {
+		unsigned long flags;
+		struct xdma_transfer *xfer;
+
+		/* build transfer */
+		rv = transfer_init(engine, req, &req->tfer[0]);
+		if (rv < 0) {
+			mutex_unlock(&engine->desc_lock);
+			goto unmap_sgl;
+		}
+		xfer = &req->tfer[0];
+
+		/* last transfer for the given request? */
+		nents -= xfer->desc_num;
+		if (!nents) {
+			xfer->last_in_request = 1;
+			xfer->sgt = NULL;
+		}
+
+		dbg_tfr("xfer, %u, ep 0x%llx, done %lu, sg %u/%u.\n", xfer->len,
+			req->ep_addr, done, req->sw_desc_idx, req->sw_desc_cnt);
+
+#ifdef __LIBXDMA_DEBUG__
+		transfer_dump(xfer);
+#endif
+
+		rv = transfer_queue(engine, xfer);
+		if (rv < 0) {
+			mutex_unlock(&engine->desc_lock);
+			pr_info("unable to submit %s, %d.\n", engine->name, rv);
+			goto unmap_sgl;
+		}
+
+		if (engine->cmplthp)
+			xdma_kthread_wakeup(engine->cmplthp);
+
+		if (timeout_ms > 0)
+			xlx_wait_event_interruptible_timeout(xfer->wq,
+				(xfer->state != TRANSFER_STATE_SUBMITTED),
+				msecs_to_jiffies(timeout_ms));
+		else
+			xlx_wait_event_interruptible(xfer->wq,
+				(xfer->state != TRANSFER_STATE_SUBMITTED));
+
+		spin_lock_irqsave(&engine->lock, flags);
+
+		switch (xfer->state) {
+		case TRANSFER_STATE_COMPLETED:
+			spin_unlock_irqrestore(&engine->lock, flags);
+
+			rv = 0;
+			dbg_tfr("transfer %p, %u, ep 0x%llx compl, +%lu.\n",
+				xfer, xfer->len, req->ep_addr - xfer->len,
+				done);
+
+			/* For C2H streaming use writeback results */
+			if (engine->streaming &&
+			    engine->dir == DMA_FROM_DEVICE) {
+				struct xdma_result *result = xfer->res_virt;
+
+				for (i = 0; i < xfer->desc_cmpl; i++)
+					done += result[i].length;
+
+				/* finish the whole request */
+				if (engine->eop_flush)
+					nents = 0;
+			} else
+				done += xfer->len;
+
+			break;
+		case TRANSFER_STATE_FAILED:
+			pr_info("xfer 0x%p,%u, failed, ep 0x%llx.\n", xfer,
+				xfer->len, req->ep_addr - xfer->len);
+			spin_unlock_irqrestore(&engine->lock, flags);
+
+#ifdef __LIBXDMA_DEBUG__
+			transfer_dump(xfer);
+			sgt_dump(sgt);
+#endif
+			rv = -EIO;
+			break;
+		default:
+			/* transfer can still be in-flight */
+			pr_info("xfer 0x%p,%u, s 0x%x timed out, ep 0x%llx.\n",
+				xfer, xfer->len, xfer->state, req->ep_addr);
+			rv = engine_status_read(engine, 0, 1);
+			if (rv < 0) {
+				pr_err("Failed to read engine status\n");
+			} else if (rv == 0) {
+				//engine_status_dump(engine);
+				rv = transfer_abort(engine, xfer);
+				if (rv < 0) {
+					pr_err("Failed to stop engine\n");
+				} else if (rv == 0) {
+					rv = xdma_engine_stop(engine);
+					if (rv < 0)
+						pr_err("Failed to stop engine\n");
+				}
+			}
+			spin_unlock_irqrestore(&engine->lock, flags);
+
+#ifdef __LIBXDMA_DEBUG__
+			transfer_dump(xfer);
+			sgt_dump(sgt);
+#endif
+			rv = -ERESTARTSYS;
+			break;
+		}
+
+		engine->desc_used -= xfer->desc_num;
+		transfer_destroy(xdev, xfer);
+
+		/* use multiple transfers per request if we could not fit
+		 * all data within single descriptor chain.
+		 */
+		tfer_idx++;
+
+		if (rv < 0) {
+			mutex_unlock(&engine->desc_lock);
+			goto unmap_sgl;
+		}
+	} /* while (sg) */
+	mutex_unlock(&engine->desc_lock);
+
+unmap_sgl:
 
 	/* as long as some data is processed, return the count */
 	return done ? done : rv;

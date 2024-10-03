@@ -94,7 +94,7 @@ static long __ioctl_user_job_get(struct qvio_user_job_ctrl* self, unsigned long 
 
 	ret = copy_to_user((void __user *)arg, &user_job_entry->user_job, sizeof(struct qvio_user_job));
 	if (ret != 0) {
-		pr_err("copy_from_user() failed, err=%d\n", (int)ret);
+		pr_err("copy_to_user() failed, err=%d\n", (int)ret);
 
 		ret = -EFAULT;
 		goto err1;
