@@ -2,7 +2,6 @@
 
 #include "pci_device.h"
 #include "device.h"
-#include "cdev.h"
 
 #include <linux/aer.h>
 
@@ -14,17 +13,6 @@ static const struct pci_device_id __pci_ids[] = {
 	{0,}
 };
 MODULE_DEVICE_TABLE(pci, __pci_ids);
-
-static int __file_open(struct inode *inode, struct file *filp) {
-	struct qvio_device* device = container_of(inode->i_cdev, struct qvio_device, cdev);
-
-	pr_info("device=%p\n", device);
-
-	filp->private_data = device;
-	nonseekable_open(inode, filp);
-
-	return 0;
-}
 
 static ssize_t __file_read(struct file *filp, char __user *buf, size_t count, loff_t *pos)
 {
@@ -209,7 +197,8 @@ static long __file_ioctl(struct file *filp, unsigned int cmd, unsigned long arg)
 
 static const struct file_operations __fops = {
 	.owner = THIS_MODULE,
-	.open = __file_open,
+	.open = qvio_cdev_open,
+	.release = qvio_cdev_release,
 	.read = __file_read,
 	.write = __file_write,
 	.mmap = __file_mmap,
@@ -248,8 +237,9 @@ static int __pci_probe(struct pci_dev *pdev, const struct pci_device_id *id) {
 		goto err1;
 	}
 
-	self->cdev_fops = &__fops;
-	err = qvio_cdev_start(self);
+	self->cdev.fops = &__fops;
+	self->cdev.private_data = self;
+	err = qvio_cdev_start(&self->cdev);
 	if(err) {
 		pr_err("qvio_cdev_start() failed, err=%d\n", err);
 		goto err2;
@@ -304,7 +294,7 @@ static int __pci_probe(struct pci_dev *pdev, const struct pci_device_id *id) {
 err4:
 	qvio_video_put(self->video[0]);
 err3:
-	qvio_cdev_stop(self);
+	qvio_cdev_stop(&self->cdev);
 err2:
 	qvio_device_xdma_close(self);
 err1:
@@ -323,7 +313,7 @@ static void __pci_remove(struct pci_dev *pdev) {
 
 	qvio_video_stop(self->video[0]);
 	qvio_video_put(self->video[0]);
-	qvio_cdev_stop(self);
+	qvio_cdev_stop(&self->cdev);
 	qvio_device_xdma_close(self);
 	qvio_device_put(self);
 	dev_set_drvdata(&pdev->dev, NULL);

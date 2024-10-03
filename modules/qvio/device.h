@@ -1,13 +1,13 @@
 #ifndef __QVIO_DEVICE_H__
 #define __QVIO_DEVICE_H__
 
+#include "cdev.h"
 #include "video.h"
+#include "libxdma.h"
 
 #include <linux/platform_device.h>
 #include <linux/pci.h>
 #include <linux/cdev.h>
-
-#include "libxdma.h"
 
 #define QVIO_PCI_DRIVER_NAME QVIO_DRIVER_NAME "-pci"
 #define QVIO_MAX_VIDEO 32
@@ -20,10 +20,7 @@ struct qvio_device {
 	struct pci_dev *pci_dev;
 	uint32_t device_id;
 
-	// cdev
-	dev_t cdevno;
-	struct cdev cdev;
-	const struct file_operations* cdev_fops;
+	struct qvio_cdev cdev;
 
 	// xdma
 	int user_max;

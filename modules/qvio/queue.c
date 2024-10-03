@@ -560,6 +560,7 @@ static void __read_one_frame(struct qvio_queue* self) {
 	return;
 
 err0:
+	return;
 }
 
 static int __stream_main(void * data) {

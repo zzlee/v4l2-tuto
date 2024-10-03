@@ -325,21 +325,18 @@ int qvio_video_enum_fmt(struct qvio_video* self, struct v4l2_fmtdesc *format) {
 		format->flags = 0;
 		snprintf((char *) format->description, sizeof(format->description), "YUYV");
 		format->pixelformat = V4L2_PIX_FMT_YUYV;
-		format->mbus_code = 0;
 		break;
 
 	case 1:
 		format->flags = 0;
 		snprintf((char *) format->description, sizeof(format->description), "NV12");
 		format->pixelformat = V4L2_PIX_FMT_NV12;
-		format->mbus_code = 0;
 		break;
 
 	case 2:
 		format->flags = 0;
 		snprintf((char *) format->description, sizeof(format->description), "M420");
 		format->pixelformat = V4L2_PIX_FMT_M420;
-		format->mbus_code = 0;
 		break;
 
 	default:

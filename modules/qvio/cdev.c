@@ -1,8 +1,6 @@
 #define pr_fmt(fmt)     "[" KBUILD_MODNAME "]%s(#%d): " fmt, __func__, __LINE__
 
 #include "cdev.h"
-#include "ioctl.h"
-#include "uapi/qvio.h"
 
 #include <linux/version.h>
 #include <linux/device.h>
@@ -20,7 +18,7 @@ int qvio_cdev_register(void) {
 	int err;
 	dev_t dev;
 
-	pr_info("\n");
+	// pr_info("\n");
 
 #if LINUX_VERSION_CODE <= KERNEL_VERSION(6,4,0)
 	g_class = class_create(THIS_MODULE, QVIO_NODE_NAME);
@@ -40,7 +38,7 @@ int qvio_cdev_register(void) {
 	}
 
 	g_major = MAJOR(dev);
-	pr_info("g_major=%d\n", g_major);
+	// pr_info("g_major=%d\n", g_major);
 
 	g_cdevno_base = 0;
 
@@ -53,20 +51,20 @@ err0:
 }
 
 void qvio_cdev_unregister(void) {
-	pr_info("\n");
+	// pr_info("\n");
 
 	unregister_chrdev_region(MKDEV(g_major, QVIO_MINOR_BASE), QVIO_MINOR_COUNT);
 	class_destroy(g_class);
 }
 
-int qvio_cdev_start(struct qvio_device* self) {
+int qvio_cdev_start(struct qvio_cdev* self) {
 	int err;
 	struct device* new_device;
 
-	pr_info("\n");
+	// pr_info("\n");
 
 	self->cdevno = MKDEV(g_major, g_cdevno_base++);
-	cdev_init(&self->cdev, self->cdev_fops);
+	cdev_init(&self->cdev, self->fops);
 	self->cdev.owner = THIS_MODULE;
 	err = cdev_add(&self->cdev, self->cdevno, 1);
 	if (err) {
@@ -89,9 +87,28 @@ err0:
 	return err;
 }
 
-void qvio_cdev_stop(struct qvio_device* self) {
-	pr_info("\n");
+void qvio_cdev_stop(struct qvio_cdev* self) {
+	// pr_info("\n");
 
 	device_destroy(g_class, self->cdevno);
 	cdev_del(&self->cdev);
+}
+
+int qvio_cdev_open(struct inode *inode, struct file *filp) {
+	struct qvio_cdev* self = container_of(inode->i_cdev, struct qvio_cdev, cdev);
+
+	// pr_info("self=%p\n", self);
+
+	filp->private_data = self->private_data;
+	nonseekable_open(inode, filp);
+
+	return 0;
+}
+
+int qvio_cdev_release(struct inode *inode, struct file *filep) {
+	struct qvio_cdev* self = container_of(inode->i_cdev, struct qvio_cdev, cdev);
+
+	// pr_info("self=%p\n", self);
+
+	return 0;
 }

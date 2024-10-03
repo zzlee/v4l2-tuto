@@ -2,23 +2,11 @@
 
 #include "platform_device.h"
 #include "device.h"
-#include "cdev.h"
 
 #include <linux/platform_device.h>
 #include <media/v4l2-device.h>
 
 #define DRV_MODULE_NAME "qvio"
-
-static int __file_open(struct inode *inode, struct file *filp) {
-	struct qvio_device* device = container_of(inode->i_cdev, struct qvio_device, cdev);
-
-	pr_info("device=%p\n", device);
-
-	filp->private_data = device;
-	nonseekable_open(inode, filp);
-
-	return 0;
-}
 
 static long __file_ioctl(struct file * filp, unsigned int cmd, unsigned long arg) {
 	long ret;
@@ -37,7 +25,8 @@ static long __file_ioctl(struct file * filp, unsigned int cmd, unsigned long arg
 }
 
 static struct file_operations __fops = {
-	.open = __file_open,
+	.open = qvio_cdev_open,
+	.release = qvio_cdev_release,
 	.unlocked_ioctl = __file_ioctl,
 };
 
@@ -57,10 +46,10 @@ static int __probe(struct platform_device *pdev) {
 	self->dev = &pdev->dev;
 	self->pdev = pdev;
 	platform_set_drvdata(pdev, self);
-	self->device_id = 0xCAFE0001;
 
-	self->cdev_fops = &__fops;
-	err = qvio_cdev_start(self);
+	self->cdev.private_data = self;
+	self->cdev.fops = &__fops;
+	err = qvio_cdev_start(&self->cdev);
 	if(err) {
 		pr_err("qvio_cdev_start() failed, err=%d\n", err);
 		goto err0_1;
@@ -93,7 +82,7 @@ static int __probe(struct platform_device *pdev) {
 err2:
 	qvio_video_put(self->video[0]);
 err1:
-	qvio_cdev_stop(self);
+	qvio_cdev_stop(&self->cdev);
 err0_1:
 	qvio_device_put(self);
 err0:
@@ -107,14 +96,14 @@ static int __remove(struct platform_device *pdev) {
 
 	qvio_video_stop(self->video[0]);
 	qvio_video_put(self->video[0]);
-	qvio_cdev_stop(self);
+	qvio_cdev_stop(&self->cdev);
 	qvio_device_put(self);
 	platform_set_drvdata(pdev, NULL);
 
 	return 0;
 }
 
-static struct platform_driver platform_driver = {
+static struct platform_driver __driver = {
 	.driver = {
 		.name = DRV_MODULE_NAME
 	},
@@ -129,7 +118,7 @@ int qvio_device_platform_register(void) {
 
 	pr_info("\n");
 
-	err = platform_driver_register(&platform_driver);
+	err = platform_driver_register(&__driver);
 	if(err) {
 		pr_err("platform_driver_register() failed\n");
 		goto err0;
@@ -154,7 +143,7 @@ int qvio_device_platform_register(void) {
 err2:
 	platform_device_put(pdev_qvio);
 err1:
-	platform_driver_unregister(&platform_driver);
+	platform_driver_unregister(&__driver);
 err0:
 	return err;
 }
@@ -164,5 +153,5 @@ void qvio_device_platform_unregister(void) {
 
 	platform_device_del(pdev_qvio);
 	platform_device_put(pdev_qvio);
-	platform_driver_unregister(&platform_driver);
+	platform_driver_unregister(&__driver);
 }
