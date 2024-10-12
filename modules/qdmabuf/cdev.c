@@ -1,8 +1,6 @@
 #define pr_fmt(fmt)     "[" KBUILD_MODNAME "]%s(#%d): " fmt, __func__, __LINE__
 
 #include "cdev.h"
-#include "ioctl.h"
-#include "uapi/qdmabuf.h"
 
 #include <linux/version.h>
 #include <linux/device.h>
@@ -20,7 +18,7 @@ int qdmabuf_cdev_register(void) {
 	int err;
 	dev_t dev;
 
-	pr_info("\n");
+	// pr_info("\n");
 
 #if LINUX_VERSION_CODE <= KERNEL_VERSION(6,4,0)
 	g_class = class_create(THIS_MODULE, QDMABUF_NODE_NAME);
@@ -40,7 +38,7 @@ int qdmabuf_cdev_register(void) {
 	}
 
 	g_major = MAJOR(dev);
-	pr_info("g_major=%d\n", g_major);
+	// pr_info("g_major=%d\n", g_major);
 
 	g_cdevno_base = 0;
 
@@ -53,62 +51,20 @@ err0:
 }
 
 void qdmabuf_cdev_unregister(void) {
-	pr_info("\n");
+	// pr_info("\n");
 
 	unregister_chrdev_region(MKDEV(g_major, QDMABUF_MINOR_BASE), QDMABUF_MINOR_COUNT);
 	class_destroy(g_class);
 }
 
-void qdmabuf_cdev_init(struct qdmabuf_device* self) {
-	self->cdevno = 0;
-	memset(&self->cdev, 0, sizeof(struct cdev));
-}
-
-static int __file_open(struct inode *inode, struct file *filp) {
-	struct qdmabuf_device* device = container_of(inode->i_cdev, struct qdmabuf_device, cdev);
-
-	pr_info("device=%p\n", device);
-
-	filp->private_data = device;
-	nonseekable_open(inode, filp);
-
-	return 0;
-}
-
-static long __file_ioctl(struct file * filp, unsigned int cmd, unsigned long arg) {
-	long ret;
-	struct qdmabuf_device* device = filp->private_data;
-
-	switch(cmd) {
-	case QDMABUF_IOCTL_ALLOC:
-		ret = qdmabuf_ioctl_alloc(device, arg);
-		break;
-
-	case QDMABUF_IOCTL_INFO:
-		ret = qdmabuf_ioctl_info(device, arg);
-		break;
-
-	default:
-		ret = -EINVAL;
-		break;
-	}
-
-	return ret;
-}
-
-static struct file_operations qdmabuf_fops = {
-	.open = __file_open,
-	.unlocked_ioctl = __file_ioctl,
-};
-
-int qdmabuf_cdev_start(struct qdmabuf_device* self) {
+int qdmabuf_cdev_start(struct qdmabuf_cdev* self) {
 	int err;
 	struct device* new_device;
 
-	pr_info("\n");
+	// pr_info("\n");
 
 	self->cdevno = MKDEV(g_major, g_cdevno_base++);
-	cdev_init(&self->cdev, &qdmabuf_fops);
+	cdev_init(&self->cdev, self->fops);
 	self->cdev.owner = THIS_MODULE;
 	err = cdev_add(&self->cdev, self->cdevno, 1);
 	if (err) {
@@ -131,9 +87,28 @@ err0:
 	return err;
 }
 
-void qdmabuf_cdev_stop(struct qdmabuf_device* self) {
-	pr_info("\n");
+void qdmabuf_cdev_stop(struct qdmabuf_cdev* self) {
+	// pr_info("\n");
 
 	device_destroy(g_class, self->cdevno);
 	cdev_del(&self->cdev);
+}
+
+int qdmabuf_cdev_open(struct inode *inode, struct file *filp) {
+	struct qdmabuf_cdev* self = container_of(inode->i_cdev, struct qdmabuf_cdev, cdev);
+
+	// pr_info("self=%p\n", self);
+
+	filp->private_data = self->private_data;
+	nonseekable_open(inode, filp);
+
+	return 0;
+}
+
+int qdmabuf_cdev_release(struct inode *inode, struct file *filep) {
+	struct qdmabuf_cdev* self = container_of(inode->i_cdev, struct qdmabuf_cdev, cdev);
+
+	// pr_info("self=%p\n", self);
+
+	return 0;
 }

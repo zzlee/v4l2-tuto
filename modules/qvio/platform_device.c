@@ -8,6 +8,26 @@
 
 #define DRV_MODULE_NAME "qvio"
 
+static long __file_ioctl(struct file * filp, unsigned int cmd, unsigned long arg);
+static int __probe(struct platform_device *pdev);
+static int __remove(struct platform_device *pdev);
+
+static struct file_operations __fops = {
+	.open = qvio_cdev_open,
+	.release = qvio_cdev_release,
+	.unlocked_ioctl = __file_ioctl,
+};
+
+static struct platform_driver __driver = {
+	.driver = {
+		.name = DRV_MODULE_NAME
+	},
+	.probe  = __probe,
+	.remove = __remove,
+};
+
+static struct platform_device *pdev_qvio;
+
 static long __file_ioctl(struct file * filp, unsigned int cmd, unsigned long arg) {
 	long ret;
 	struct qvio_device* device = filp->private_data;
@@ -23,12 +43,6 @@ static long __file_ioctl(struct file * filp, unsigned int cmd, unsigned long arg
 
 	return ret;
 }
-
-static struct file_operations __fops = {
-	.open = qvio_cdev_open,
-	.release = qvio_cdev_release,
-	.unlocked_ioctl = __file_ioctl,
-};
 
 static int __probe(struct platform_device *pdev) {
 	int err = 0;
@@ -102,16 +116,6 @@ static int __remove(struct platform_device *pdev) {
 
 	return 0;
 }
-
-static struct platform_driver __driver = {
-	.driver = {
-		.name = DRV_MODULE_NAME
-	},
-	.probe  = __probe,
-	.remove = __remove,
-};
-
-static struct platform_device *pdev_qvio;
 
 int qvio_device_platform_register(void) {
 	int err;

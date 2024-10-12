@@ -1,11 +1,86 @@
 #define pr_fmt(fmt)     "[" KBUILD_MODNAME "]%s(#%d): " fmt, __func__, __LINE__
 
 #include "video.h"
-#include "ioctl.h"
 #include "user_job.h"
 
 #include <linux/kernel.h>
+#include <linux/version.h>
 #include <media/videobuf2-v4l2.h>
+#include <media/v4l2-dev.h>
+#include <media/v4l2-ioctl.h>
+#include <media/v4l2-event.h>
+#include <media/v4l2-ctrls.h>
+#include <linux/anon_inodes.h>
+
+static int __ioctl_querycap(struct file *file, void *fh, struct v4l2_capability *capability);
+static int __ioctl_enum_fmt(struct file *file, void *fh, struct v4l2_fmtdesc *format);
+static int __ioctl_g_fmt(struct file *file, void *fh, struct v4l2_format *format);
+static int __ioctl_s_fmt(struct file *file, void *fh, struct v4l2_format *format);
+static int __ioctl_try_fmt(struct file *file, void *fh, struct v4l2_format *format);
+static int __ioctl_enum_input(struct file *file, void *fh, struct v4l2_input *input);
+static int __ioctl_g_input(struct file *file, void *fh, unsigned int *input);
+static int __ioctl_s_input(struct file *file, void *fh, unsigned int input);
+static int __ioctl_enum_output(struct file *file, void *fh, struct v4l2_output *output);
+static int __ioctl_g_output(struct file *file, void *fh, unsigned int *output);
+static int __ioctl_s_output(struct file *file, void *fh, unsigned int output);
+static int __ioctl_g_parm(struct file *file, void *fh, struct v4l2_streamparm *param);
+static int __ioctl_s_parm(struct file *file, void *fh, struct v4l2_streamparm *param);
+static int __ioctl_enum_framesizes(struct file *file, void *fh, struct v4l2_frmsizeenum *frame_sizes);
+static int __ioctl_enum_frameintervals(struct file *file, void *fh, struct v4l2_frmivalenum *frame_intervals);
+static long __ioctl_default(struct file *file, void *fh, bool valid_prio, unsigned int cmd, void *arg);
+static int __anon_fd(const char* name, const struct file_operations *fops, void *priv, int flags);
+
+static const struct v4l2_file_operations __video_fops = {
+	.owner          = THIS_MODULE    ,
+	.open           = v4l2_fh_open   ,
+	.release        = vb2_fop_release,
+	.unlocked_ioctl = video_ioctl2   ,
+	.read           = vb2_fop_read   ,
+	.write          = vb2_fop_write  ,
+	.mmap           = vb2_fop_mmap   ,
+	.poll           = vb2_fop_poll   ,
+};
+
+static const struct v4l2_ioctl_ops __v4l2_ioctl_ops = {
+	.vidioc_querycap               = __ioctl_querycap,
+	.vidioc_enum_fmt_vid_cap       = __ioctl_enum_fmt,
+	.vidioc_enum_fmt_vid_out       = __ioctl_enum_fmt,
+	.vidioc_g_fmt_vid_cap          = __ioctl_g_fmt,
+	.vidioc_g_fmt_vid_out          = __ioctl_g_fmt,
+	.vidioc_g_fmt_vid_cap_mplane   = __ioctl_g_fmt,
+	.vidioc_g_fmt_vid_out_mplane   = __ioctl_g_fmt,
+	.vidioc_s_fmt_vid_cap          = __ioctl_s_fmt,
+	.vidioc_s_fmt_vid_out          = __ioctl_s_fmt,
+	.vidioc_s_fmt_vid_cap_mplane   = __ioctl_s_fmt,
+	.vidioc_s_fmt_vid_out_mplane   = __ioctl_s_fmt,
+	.vidioc_try_fmt_vid_cap        = __ioctl_try_fmt,
+	.vidioc_try_fmt_vid_out        = __ioctl_try_fmt,
+	.vidioc_try_fmt_vid_cap_mplane = __ioctl_try_fmt,
+	.vidioc_try_fmt_vid_out_mplane = __ioctl_try_fmt,
+	.vidioc_reqbufs                = vb2_ioctl_reqbufs,
+	.vidioc_querybuf               = vb2_ioctl_querybuf,
+	.vidioc_qbuf                   = vb2_ioctl_qbuf,
+	.vidioc_expbuf                 = vb2_ioctl_expbuf,
+	.vidioc_dqbuf                  = vb2_ioctl_dqbuf,
+	.vidioc_create_bufs            = vb2_ioctl_create_bufs,
+	.vidioc_prepare_buf            = vb2_ioctl_prepare_buf,
+	.vidioc_streamon               = vb2_ioctl_streamon,
+	.vidioc_streamoff              = vb2_ioctl_streamoff,
+	.vidioc_enum_input             = __ioctl_enum_input,
+	.vidioc_g_input                = __ioctl_g_input,
+	.vidioc_s_input                = __ioctl_s_input,
+	.vidioc_enum_output            = __ioctl_enum_output,
+	.vidioc_g_output               = __ioctl_g_output,
+	.vidioc_s_output               = __ioctl_s_output,
+	.vidioc_g_parm                 = __ioctl_g_parm,
+	.vidioc_s_parm                 = __ioctl_s_parm,
+	.vidioc_log_status             = v4l2_ctrl_log_status,
+	.vidioc_enum_framesizes        = __ioctl_enum_framesizes,
+	.vidioc_enum_frameintervals    = __ioctl_enum_frameintervals,
+	.vidioc_subscribe_event        = v4l2_ctrl_subscribe_event,
+	.vidioc_unsubscribe_event      = v4l2_event_unsubscribe,
+	.vidioc_default                = __ioctl_default,
+};
 
 struct qvio_video* qvio_video_new(void) {
 	struct qvio_video* self = kzalloc(sizeof(struct qvio_video), GFP_KERNEL);
@@ -30,7 +105,7 @@ struct qvio_video* qvio_video_get(struct qvio_video* self) {
 	return self;
 }
 
-static void __s_free(struct kref *ref)
+static void __video_free(struct kref *ref)
 {
 	struct qvio_video* self = container_of(ref, struct qvio_video, ref);
 
@@ -42,19 +117,8 @@ static void __s_free(struct kref *ref)
 
 void qvio_video_put(struct qvio_video* self) {
 	if (self)
-		kref_put(&self->ref, __s_free);
+		kref_put(&self->ref, __video_free);
 }
-
-static const struct v4l2_file_operations qvio_video_fops = {
-	.owner          = THIS_MODULE    ,
-	.open           = v4l2_fh_open   ,
-	.release        = vb2_fop_release,
-	.unlocked_ioctl = video_ioctl2   ,
-	.read           = vb2_fop_read   ,
-	.write          = vb2_fop_write  ,
-	.mmap           = vb2_fop_mmap   ,
-	.poll           = vb2_fop_poll   ,
-};
 
 int qvio_video_start(struct qvio_video* self) {
 	int err;
@@ -151,8 +215,8 @@ int qvio_video_start(struct qvio_video* self) {
 	snprintf(self->vdev->name, sizeof(self->vdev->name), "%s", self->v4l2_dev.name);
 	self->vdev->v4l2_dev = &self->v4l2_dev;
 	self->vdev->vfl_dir = self->vfl_dir;
-	self->vdev->fops = &qvio_video_fops;
-	self->vdev->ioctl_ops = qvio_ioctl_ops();
+	self->vdev->fops = &__video_fops;
+	self->vdev->ioctl_ops = &__v4l2_ioctl_ops;
 	self->vdev->tvnorms = V4L2_STD_ALL;
 	self->vdev->release = video_device_release_empty;
 	self->vdev->queue = vb2_queue;
@@ -186,8 +250,169 @@ void qvio_video_stop(struct qvio_video* self) {
 	v4l2_device_unregister(&self->v4l2_dev);
 }
 
-int qvio_video_s_fmt(struct qvio_video* self, struct v4l2_format *format) {
+int qvio_video_try_fmt(struct qvio_video* self, struct v4l2_format *format) {
 	int err;
+
+	pr_info("\n");
+
+	if(format->type != self->buffer_type) {
+		pr_err("unexpected value, %d != %d\n", (int)format->type, (int)self->buffer_type);
+		err = -EINVAL;
+
+		goto err0;
+	}
+
+	switch(self->buffer_type) {
+	case V4L2_BUF_TYPE_VIDEO_CAPTURE:
+	case V4L2_BUF_TYPE_VIDEO_OUTPUT:
+		switch(format->fmt.pix.pixelformat) {
+		case V4L2_PIX_FMT_YUYV:
+		case V4L2_PIX_FMT_NV12:
+		case V4L2_PIX_FMT_M420:
+			break;
+
+		default:
+			pr_err("unexpected value, format->fmt.pix.pixelformat=0x%X\n", (int)format->fmt.pix.pixelformat);
+			err = -EINVAL;
+
+			goto err0;
+			break;
+		}
+		break;
+
+	case V4L2_BUF_TYPE_VIDEO_CAPTURE_MPLANE:
+	case V4L2_BUF_TYPE_VIDEO_OUTPUT_MPLANE:
+		switch(format->fmt.pix_mp.pixelformat) {
+		case V4L2_PIX_FMT_YUYV:
+		case V4L2_PIX_FMT_NV12:
+		case V4L2_PIX_FMT_M420:
+			break;
+
+		default:
+			pr_err("unexpected value, format->fmt.pix_mp.pixelformat=0x%X\n", (int)format->fmt.pix_mp.pixelformat);
+			err = -EINVAL;
+
+			goto err0;
+			break;
+		}
+		break;
+
+	default:
+		pr_err("unexpected value, self->buffer_type=%d\n", (int)self->buffer_type);
+		err = -EINVAL;
+
+		goto err0;
+		break;
+	}
+
+	err = 0;
+
+	return err;
+
+err0:
+	return err;
+}
+
+long qvio_video_buf_done(struct qvio_video* self) {
+	long ret;
+	int err;
+
+#if 0 // DEBUG
+	pr_info("\n");
+#endif
+
+	err = qvio_queue_try_buf_done(&self->queue);
+	if(err) {
+		pr_err("qvio_queue_try_buf_done() failed, err=%d", err);
+		ret = err;
+
+		goto err0;
+	}
+
+	ret = 0;
+
+	return ret;
+
+err0:
+	return ret;
+}
+
+static int __ioctl_querycap(struct file *file, void *fh, struct v4l2_capability *capability) {
+	struct qvio_video* self = video_drvdata(file);
+
+	pr_info("self=%p\n", self);
+
+	memset(capability, 0, sizeof(struct v4l2_capability));
+	capability->version = LINUX_VERSION_CODE;
+	snprintf(capability->driver, sizeof(capability->driver), "qvio");
+	snprintf(capability->card, sizeof(capability->card), "qvio");
+	strlcpy(capability->bus_info, self->bus_info, sizeof(capability->bus_info));
+	capability->capabilities = self->device_caps | V4L2_CAP_DEVICE_CAPS;
+	capability->device_caps = self->device_caps;
+
+	return 0;
+}
+
+static int __ioctl_enum_fmt(struct file *file, void *fh, struct v4l2_fmtdesc *format) {
+	int err;
+	struct qvio_video* self = video_drvdata(file);
+
+	pr_info("\n");
+
+	if(format->type != self->buffer_type) {
+		pr_err("unexpected value, %d != %d\n", (int)format->type, (int)self->buffer_type);
+		err = -EINVAL;
+
+		goto err0;
+	}
+
+	switch(format->index) {
+	case 0:
+		format->flags = 0;
+		snprintf((char *) format->description, sizeof(format->description), "YUYV");
+		format->pixelformat = V4L2_PIX_FMT_YUYV;
+		break;
+
+	case 1:
+		format->flags = 0;
+		snprintf((char *) format->description, sizeof(format->description), "NV12");
+		format->pixelformat = V4L2_PIX_FMT_NV12;
+		break;
+
+	case 2:
+		format->flags = 0;
+		snprintf((char *) format->description, sizeof(format->description), "M420");
+		format->pixelformat = V4L2_PIX_FMT_M420;
+		break;
+
+	default:
+		pr_err("unexpected value, format->index=%d\n", (int)format->index);
+		err = -EINVAL;
+
+		goto err0;
+		break;
+	}
+
+	return 0;
+
+err0:
+	return err;
+}
+
+static int __ioctl_g_fmt(struct file *file, void *fh, struct v4l2_format *format) {
+	int err;
+	struct qvio_video* self = video_drvdata(file);
+
+	pr_info("\n");
+
+	memcpy(format, &self->current_format, sizeof(struct v4l2_format));
+
+	return 0;
+}
+
+static int __ioctl_s_fmt(struct file *file, void *fh, struct v4l2_format *format) {
+	int err;
+	struct qvio_video* self = video_drvdata(file);
 
 	pr_info("\n");
 
@@ -300,137 +525,34 @@ int qvio_video_s_fmt(struct qvio_video* self, struct v4l2_format *format) {
 	if(err) {
 		pr_warn("qvio_user_job_s_fmt() failed, err=%d", err);
 	}
-	err = 0;
 
-	return err;
-
-err0:
-	return err;
-}
-
-int qvio_video_enum_fmt(struct qvio_video* self, struct v4l2_fmtdesc *format) {
-	int err;
-
-	pr_info("\n");
-
-	if(format->type != self->buffer_type) {
-		pr_err("unexpected value, %d != %d\n", (int)format->type, (int)self->buffer_type);
-		err = -EINVAL;
-
-		goto err0;
-	}
-
-	switch(format->index) {
-	case 0:
-		format->flags = 0;
-		snprintf((char *) format->description, sizeof(format->description), "YUYV");
-		format->pixelformat = V4L2_PIX_FMT_YUYV;
-		break;
-
-	case 1:
-		format->flags = 0;
-		snprintf((char *) format->description, sizeof(format->description), "NV12");
-		format->pixelformat = V4L2_PIX_FMT_NV12;
-		break;
-
-	case 2:
-		format->flags = 0;
-		snprintf((char *) format->description, sizeof(format->description), "M420");
-		format->pixelformat = V4L2_PIX_FMT_M420;
-		break;
-
-	default:
-		pr_err("unexpected value, format->index=%d\n", (int)format->index);
-		err = -EINVAL;
-
-		goto err0;
-		break;
-	}
-
-	err = 0;
-
-	return err;
+	return 0;
 
 err0:
 	return err;
 }
 
-int qvio_video_g_fmt(struct qvio_video* self, struct v4l2_format *format) {
+static int __ioctl_try_fmt(struct file *file, void *fh, struct v4l2_format *format) {
 	int err;
+	struct qvio_video* self = video_drvdata(file);
 
 	pr_info("\n");
 
-	memcpy(format, &self->current_format, sizeof(struct v4l2_format));
-	err = 0;
-
-	return err;
-}
-
-int qvio_video_try_fmt(struct qvio_video* self, struct v4l2_format *format) {
-	int err;
-
-	pr_info("\n");
-
-	if(format->type != self->buffer_type) {
-		pr_err("unexpected value, %d != %d\n", (int)format->type, (int)self->buffer_type);
-		err = -EINVAL;
-
+	err = qvio_video_try_fmt(self, format);
+	if(err) {
+		pr_err("qvio_video_try_fmt() failed, err=%d", err);
 		goto err0;
 	}
 
-	switch(self->buffer_type) {
-	case V4L2_BUF_TYPE_VIDEO_CAPTURE:
-	case V4L2_BUF_TYPE_VIDEO_OUTPUT:
-		switch(format->fmt.pix.pixelformat) {
-		case V4L2_PIX_FMT_YUYV:
-		case V4L2_PIX_FMT_NV12:
-		case V4L2_PIX_FMT_M420:
-			break;
-
-		default:
-			pr_err("unexpected value, format->fmt.pix.pixelformat=0x%X\n", (int)format->fmt.pix.pixelformat);
-			err = -EINVAL;
-
-			goto err0;
-			break;
-		}
-		break;
-
-	case V4L2_BUF_TYPE_VIDEO_CAPTURE_MPLANE:
-	case V4L2_BUF_TYPE_VIDEO_OUTPUT_MPLANE:
-		switch(format->fmt.pix_mp.pixelformat) {
-		case V4L2_PIX_FMT_YUYV:
-		case V4L2_PIX_FMT_NV12:
-		case V4L2_PIX_FMT_M420:
-			break;
-
-		default:
-			pr_err("unexpected value, format->fmt.pix_mp.pixelformat=0x%X\n", (int)format->fmt.pix_mp.pixelformat);
-			err = -EINVAL;
-
-			goto err0;
-			break;
-		}
-		break;
-
-	default:
-		pr_err("unexpected value, self->buffer_type=%d\n", (int)self->buffer_type);
-		err = -EINVAL;
-
-		goto err0;
-		break;
-	}
-
-	err = 0;
-
-	return err;
+	return 0;
 
 err0:
 	return err;
 }
 
-int qvio_video_enum_input(struct qvio_video* self, struct v4l2_input *input) {
+static int __ioctl_enum_input(struct file *file, void *fh, struct v4l2_input *input) {
 	int err;
+	struct qvio_video* self = video_drvdata(file);
 
 	pr_info("\n");
 
@@ -460,16 +582,15 @@ int qvio_video_enum_input(struct qvio_video* self, struct v4l2_input *input) {
 		break;
 	}
 
-	err = 0;
-
 	return err;
 
 err0:
 	return err;
 }
 
-int qvio_video_g_input(struct qvio_video* self, unsigned int *input) {
+static int __ioctl_g_input(struct file *file, void *fh, unsigned int *input) {
 	int err;
+	struct qvio_video* self = video_drvdata(file);
 
 	pr_info("\n");
 
@@ -481,16 +602,16 @@ int qvio_video_g_input(struct qvio_video* self, unsigned int *input) {
 	}
 
 	*input = self->current_inout;
-	err = 0;
 
-	return err;
+	return 0;
 
 err0:
 	return err;
 }
 
-int qvio_video_s_input(struct qvio_video* self, unsigned int input) {
+static int __ioctl_s_input(struct file *file, void *fh, unsigned int input) {
 	int err;
+	struct qvio_video* self = video_drvdata(file);
 
 	pr_info("\n");
 
@@ -514,16 +635,15 @@ int qvio_video_s_input(struct qvio_video* self, unsigned int input) {
 		break;
 	}
 
-	err = 0;
-
-	return err;
+	return 0;
 
 err0:
 	return err;
 }
 
-int qvio_video_enum_output(struct qvio_video* self, struct v4l2_output *output) {
+static int __ioctl_enum_output(struct file *file, void *fh, struct v4l2_output *output) {
 	int err;
+	struct qvio_video* self = video_drvdata(file);
 
 	pr_info("\n");
 
@@ -552,14 +672,15 @@ int qvio_video_enum_output(struct qvio_video* self, struct v4l2_output *output) 
 		break;
 	}
 
-	return err;
+	return 0;
 
 err0:
 	return err;
 }
 
-int qvio_video_g_output(struct qvio_video* self, unsigned int *output) {
+static int __ioctl_g_output(struct file *file, void *fh, unsigned int *output) {
 	int err;
+	struct qvio_video* self = video_drvdata(file);
 
 	pr_info("\n");
 
@@ -571,16 +692,16 @@ int qvio_video_g_output(struct qvio_video* self, unsigned int *output) {
 	}
 
 	*output = self->current_inout;
-	err = 0;
 
-	return err;
+	return 0;
 
 err0:
 	return err;
 }
 
-int qvio_video_s_output(struct qvio_video* self, unsigned int output) {
+static int __ioctl_s_output(struct file *file, void *fh, unsigned int output) {
 	int err;
+	struct qvio_video* self = video_drvdata(file);
 
 	pr_info("\n");
 
@@ -604,16 +725,15 @@ int qvio_video_s_output(struct qvio_video* self, unsigned int output) {
 		break;
 	}
 
-	err = 0;
-
-	return err;
+	return 0;
 
 err0:
 	return err;
 }
 
-int qvio_video_g_parm(struct qvio_video* self, struct v4l2_streamparm *param) {
+static int __ioctl_g_parm(struct file *file, void *fh, struct v4l2_streamparm *param) {
 	int err;
+	struct qvio_video* self = video_drvdata(file);
 
 	pr_info("\n");
 
@@ -625,16 +745,16 @@ int qvio_video_g_parm(struct qvio_video* self, struct v4l2_streamparm *param) {
 	}
 
 	*param = self->current_parm;
-	err = 0;
 
-	return err;
+	return 0;
 
 err0:
 	return err;
 }
 
-int qvio_video_s_parm(struct qvio_video* self, struct v4l2_streamparm *param) {
+static int __ioctl_s_parm(struct file *file, void *fh, struct v4l2_streamparm *param) {
 	int err;
+	struct qvio_video* self = video_drvdata(file);
 
 	pr_info("\n");
 
@@ -646,16 +766,16 @@ int qvio_video_s_parm(struct qvio_video* self, struct v4l2_streamparm *param) {
 	}
 
 	self->current_parm = *param;
-	err = 0;
 
-	return err;
+	return 0;
 
 err0:
 	return err;
 }
 
-int qvio_video_enum_framesizes(struct qvio_video* self, struct v4l2_frmsizeenum *frame_sizes) {
+static int __ioctl_enum_framesizes(struct file *file, void *fh, struct v4l2_frmsizeenum *frame_sizes) {
 	int err;
+	struct qvio_video* self = video_drvdata(file);
 
 	pr_info("\n");
 
@@ -691,16 +811,15 @@ int qvio_video_enum_framesizes(struct qvio_video* self, struct v4l2_frmsizeenum 
 		break;
 	}
 
-	err = 0;
-
-	return err;
+	return 0;
 
 err0:
 	return err;
 }
 
-int qvio_video_enum_frameintervals(struct qvio_video* self, struct v4l2_frmivalenum *frame_intervals) {
+static int __ioctl_enum_frameintervals(struct file *file, void *fh, struct v4l2_frmivalenum *frame_intervals) {
 	int err;
+	struct qvio_video* self = video_drvdata(file);
 
 	pr_info("\n");
 
@@ -732,34 +851,71 @@ int qvio_video_enum_frameintervals(struct qvio_video* self, struct v4l2_frmivale
 		break;
 	}
 
-	err = 0;
-
-	return err;
+	return 0;
 
 err0:
 	return err;
 }
 
-long qvio_video_buf_done(struct qvio_video* self) {
-	long ret;
+static int __anon_fd(const char* name, const struct file_operations *fops, void *priv, int flags) {
 	int err;
+	int fd;
+	struct file* file;
 
-#if 0 // DEBUG
-	pr_info("\n");
-#endif
+	fd = get_unused_fd_flags(flags);
+	if (fd < 0) {
+		pr_err("get_unused_fd_flags() failed, fd=%d\n", fd);
 
-	err = qvio_queue_try_buf_done(&self->queue);
-	if(err) {
-		pr_err("qvio_queue_try_buf_done() failed, err=%d", err);
-		ret = err;
-
+		err = fd;
 		goto err0;
 	}
 
-	ret = 0;
+	file = anon_inode_getfile(name, fops, priv, flags);
+	if (IS_ERR(file)) {
+		err = PTR_ERR(file);
+		pr_err("anon_inode_getfile() failed, err=%d\n", err);
 
-	return ret;
+		goto err1;
+	}
 
+	fd_install(fd, file);
+	err = fd;
+
+	return err;
+
+err1:
+	put_unused_fd(fd);
 err0:
+	return err;
+}
+
+static long __ioctl_default(struct file *file, void *fh, bool valid_prio, unsigned int cmd, void *arg) {
+	long ret;
+	struct qvio_video* self = video_drvdata(file);
+
+#if 0
+	pr_info("valid_prio=%d cmd=%d arg=%p\n", valid_prio, cmd, arg);
+#endif
+
+	switch(cmd) {
+	case QVID_IOC_USER_JOB_FD: {
+		int* pFd = (int*)arg;
+
+		*pFd = __anon_fd("qvio-user-job", self->user_job_ctrl.ctrl_fops, &self->user_job_ctrl, O_RDONLY | O_CLOEXEC);
+		ret = 0;
+
+		pr_info("fd=%d\n", *pFd);
+	}
+		break;
+
+	case QVID_IOC_BUF_DONE:
+		ret = qvio_video_buf_done(self);
+		break;
+
+	default:
+		ret = -ENOIOCTLCMD;
+		break;
+	}
+
 	return ret;
 }

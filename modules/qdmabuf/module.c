@@ -4,6 +4,7 @@
 #include <linux/init.h>
 #include <linux/module.h>
 #include <linux/platform_device.h>
+#include <linux/of_device.h>
 
 #include "version.h"
 #include "device.h"
@@ -11,7 +12,7 @@
 
 #define DRV_MODULE_DESC		"QCAP dma-buf Driver"
 
-static char version[] = DRV_MODULE_DESC " v" DRV_MODULE_VERSION "\n";
+static char version[] = DRV_MODULE_DESC " v" DRV_MODULE_VERSION;
 
 MODULE_AUTHOR("ZzLab");
 MODULE_DESCRIPTION(DRV_MODULE_DESC);
@@ -22,60 +23,66 @@ MODULE_LICENSE("Dual BSD/GPL");
 MODULE_IMPORT_NS(DMA_BUF);
 #endif
 
+#ifdef CONFIG_OF
+struct of_device_id qdmabuf_of_match[] = {
+	{ .compatible = "yuan,qdmabuf", },
+	{ /* end of list */ },
+};
+MODULE_DEVICE_TABLE(of, qdmabuf_of_match);
+#else // CONFIG_OF
 static struct platform_device *pdev_qdmabuf;
+#endif // CONFIG_OF
 
 static int __init qdmabuf_mod_init(void)
 {
 	int err;
 
-	pr_info("%s", version);
-
-	err = qdmabuf_cdev_register();
-	if (err != 0) {
-		pr_err("qdmabuf_cdev_register() failed, err=%d\n", err);
-		goto err0;
-	}
+	pr_info("%s\n", version);
 
 	err = qdmabuf_device_register();
 	if (err != 0) {
 		pr_err("qdmabuf_device_register() failed, err=%d\n", err);
-		goto err1;
+		goto err0;
 	}
 
+#ifndef CONFIG_OF
 	pdev_qdmabuf = platform_device_alloc(QDMABUF_DRIVER_NAME, 0);
 	if (pdev_qdmabuf == NULL) {
 		pr_err("platform_device_alloc() failed\n");
 		err = -ENOMEM;
-		goto err2;
+		goto err1;
 	}
 
 	err = platform_device_add(pdev_qdmabuf);
 	if (err != 0) {
 		pr_err("platform_device_add() failed, err=%d\n", err);
 		err = -ENOMEM;
-		goto err3;
+		goto err2;
 	}
+#endif // CONFIG_OF
 
 	return err;
 
-err3:
-	platform_device_put(pdev_qdmabuf);
+#ifndef CONFIG_OF
 err2:
-	qdmabuf_device_unregister();
+	platform_device_put(pdev_qdmabuf);
 err1:
-	qdmabuf_cdev_unregister();
+	qdmabuf_device_unregister();
+#endif // CONFIG_OF
 err0:
 	return err;
 }
 
 static void __exit qdmabuf_mod_exit(void)
 {
-	pr_info("%s", version);
+	pr_info("%s\n", version);
 
+#ifndef CONFIG_OF
 	platform_device_del(pdev_qdmabuf);
 	platform_device_put(pdev_qdmabuf);
+#endif // CONFIG_OF
+
 	qdmabuf_device_unregister();
-	qdmabuf_cdev_unregister();
 }
 
 module_init(qdmabuf_mod_init);

@@ -9,7 +9,6 @@ qvio-objs := \
 	device.o \
 	cdev.o \
 	video.o \
-	ioctl.o \
 	user_job.o \
 	platform_device.o
 
