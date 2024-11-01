@@ -19,5 +19,8 @@ ccflags-y += \
 all:
 	$(MAKE) -C $(KERNEL_DIR) M=$(PWD) modules
 
+dtbs:
+	dtc -O dtb -@ qdmabuf.dts -o qdmabuf.dtbo
+
 clean:
 	$(MAKE) -C $(KERNEL_DIR) M=$(PWD) clean

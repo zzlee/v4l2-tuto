@@ -9,6 +9,7 @@
 #include <linux/slab.h>
 #include <linux/of_device.h>
 #include <linux/fs.h>
+#include <linux/compat.h>
 
 #ifdef CONFIG_COMPAT
 #include <asm/compat.h>

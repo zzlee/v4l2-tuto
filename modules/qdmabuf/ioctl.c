@@ -5,6 +5,7 @@
 #include "dmabuf_exp.h"
 
 #include <linux/version.h>
+#include <linux/uaccess.h>
 #include <linux/dma-buf.h>
 #include <linux/platform_device.h>
 
