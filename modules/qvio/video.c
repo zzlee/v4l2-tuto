@@ -5,6 +5,7 @@
 
 #include <linux/kernel.h>
 #include <linux/version.h>
+#include <linux/string.h>
 #include <media/videobuf2-v4l2.h>
 #include <media/v4l2-dev.h>
 #include <media/v4l2-ioctl.h>
@@ -346,7 +347,7 @@ static int __ioctl_querycap(struct file *file, void *fh, struct v4l2_capability 
 	capability->version = LINUX_VERSION_CODE;
 	snprintf(capability->driver, sizeof(capability->driver), "qvio");
 	snprintf(capability->card, sizeof(capability->card), "qvio");
-	strlcpy(capability->bus_info, self->bus_info, sizeof(capability->bus_info));
+	strscpy(capability->bus_info, self->bus_info, sizeof(capability->bus_info));
 	capability->capabilities = self->device_caps | V4L2_CAP_DEVICE_CAPS;
 	capability->device_caps = self->device_caps;
 

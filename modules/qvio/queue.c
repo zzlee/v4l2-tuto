@@ -5,6 +5,7 @@
 #include "libxdma.h"
 #include "libxdma_api.h"
 
+#include <linux/version.h>
 #include <linux/kernel.h>
 #include <media/videobuf2-v4l2.h>
 #include <media/videobuf2-vmalloc.h>
@@ -42,6 +43,7 @@ static int __queue_setup(struct vb2_queue *queue,
 	struct device *alloc_devs[]) {
 	int err = 0;
 	struct qvio_queue* self = container_of(queue, struct qvio_queue, queue);
+	struct qvio_video* video = container_of(self, struct qvio_video, queue);
 
 	pr_info("+param %d %d\n", *num_buffers, *num_planes);
 
@@ -56,16 +58,19 @@ static int __queue_setup(struct vb2_queue *queue,
 		case V4L2_PIX_FMT_YUYV:
 			sizes[0] = ALIGN(self->current_format.fmt.pix.width * 2, self->halign) *
 				ALIGN(self->current_format.fmt.pix.height, self->valign);
+			alloc_devs[0] = video->qdev->dev;
 			break;
 
 		case V4L2_PIX_FMT_NV12:
 			sizes[0] = ALIGN(self->current_format.fmt.pix.width, self->halign) *
 				ALIGN(self->current_format.fmt.pix.height, self->valign) * 3 / 2;
+			alloc_devs[0] = video->qdev->dev;
 			break;
 
 		case V4L2_PIX_FMT_M420:
 			sizes[0] = ALIGN(self->current_format.fmt.pix.width, self->halign) *
 				ALIGN(self->current_format.fmt.pix.height * 3 / 2, self->valign);
+			alloc_devs[0] = video->qdev->dev;
 			break;
 
 		default:
@@ -83,6 +88,7 @@ static int __queue_setup(struct vb2_queue *queue,
 			*num_planes = 1;
 			sizes[0] = ALIGN(self->current_format.fmt.pix_mp.width * 2, self->halign) *
 				ALIGN(self->current_format.fmt.pix_mp.height, self->valign);
+			alloc_devs[0] = video->qdev->dev;
 			break;
 
 		case V4L2_PIX_FMT_NV12:
@@ -91,12 +97,15 @@ static int __queue_setup(struct vb2_queue *queue,
 				ALIGN(self->current_format.fmt.pix_mp.height, self->valign);
 			sizes[1] = ALIGN(self->current_format.fmt.pix_mp.width, self->halign) *
 				ALIGN(self->current_format.fmt.pix_mp.height, self->valign) / 2;
+			alloc_devs[0] = video->qdev->dev;
+			alloc_devs[1] = video->qdev->dev;
 			break;
 
 		case V4L2_PIX_FMT_M420:
 			*num_planes = 1;
 			sizes[0] = ALIGN(self->current_format.fmt.pix_mp.width, self->halign) *
 				ALIGN(self->current_format.fmt.pix_mp.height * 3 / 2, self->valign);
+			alloc_devs[0] = video->qdev->dev;
 			break;
 
 		default:
@@ -898,7 +907,12 @@ int qvio_queue_start(struct qvio_queue* self, enum v4l2_buf_type type) {
 	self->queue.mem_ops = &vb2_vmalloc_memops;
 	self->queue.ops = &qvio_vb2_ops;
 	self->queue.timestamp_flags = V4L2_BUF_FLAG_TIMESTAMP_MONOTONIC;
+
+#if LINUX_VERSION_CODE <= KERNEL_VERSION(6,8,0)
 	self->queue.min_buffers_needed = 2;
+#else
+	self->queue.min_queued_buffers = 2;
+#endif
 
 	return 0;
 }
